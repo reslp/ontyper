@@ -5,8 +5,10 @@ Microsatellite genotyping toolkit for Oxford Nanopore sequencing data.
 ## Installation
 
 First you need to clone the repository:
+
 ```bash
-git clone 
+git clone git@github.com:reslp/ontyper.git
+```
 
 ### As a global CLI tool (recommended)
 
