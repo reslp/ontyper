@@ -10,6 +10,10 @@ import glob
 import os
 
 
+FASTA_SUFFIXES = (".fas", ".fasta", ".fa")
+LEGACY_DEMULTIPLEX_SUFFIXES = ("_single_all", "_dual_all")
+
+
 def parse_method(method):
     """Parse the method string and return method name and parameters."""
     if method == "strict":
@@ -98,6 +102,49 @@ def write_detailed_output(detailed_bins, outfile):
                 out.write(locus_name + "\t" + str(repeat_count) + "x\t" + ",".join(seqnames) + "\n")
 
 
+def strip_fasta_suffix(name):
+    """Remove a FASTA suffix from a file name or path stem."""
+    basename = os.path.basename(name)
+    for suffix in FASTA_SUFFIXES:
+        if basename.endswith(suffix):
+            return basename[:-len(suffix)]
+    return basename
+
+
+def normalize_sample_name(name):
+    """Normalize FASTA stems from current and legacy demultiplex output names."""
+    stem = strip_fasta_suffix(name)
+    for suffix in LEGACY_DEMULTIPLEX_SUFFIXES:
+        if stem.endswith(suffix):
+            return stem[:-len(suffix)]
+    return stem
+
+
+def collect_fastafiles(indir):
+    """Collect FASTA files from a demultiplexed read directory."""
+    fastafiles = []
+    for suffix in FASTA_SUFFIXES:
+        fastafiles.extend(glob.glob(os.path.join(indir, "*" + suffix)))
+    return sorted(set(fastafiles))
+
+
+def build_fasta_lookup(fastafiles):
+    """Build an exact sample-name to FASTA path lookup.
+
+    Supports current files like <sample>.fas and legacy names like
+    <sample>_single_all.fas or <sample>_dual_all.fas.
+    """
+    lookup = {}
+    for path in fastafiles:
+        stem = strip_fasta_suffix(path)
+        lookup[stem] = path
+    for path in fastafiles:
+        normalized = normalize_sample_name(path)
+        if normalized not in lookup:
+            lookup[normalized] = path
+    return lookup
+
+
 def main(args):
     """
     Main entry point for genotype identification.
@@ -107,8 +154,9 @@ def main(args):
     """
     method_name, allowed_mismatches_per_motif, allowed_total_mismatches = parse_method(args.method)
     
-    fastafiles = glob.glob(args.indir + "/*.fas")
-    print("Directory", args.indir, "contains", len(fastafiles), "fasta files (*.fas)", file=sys.stderr)
+    fastafiles = collect_fastafiles(args.indir)
+    fasta_lookup = build_fasta_lookup(fastafiles)
+    print("Directory", args.indir, "contains", len(fastafiles), "fasta files", file=sys.stderr)
     print("Using method:", args.method, file=sys.stderr)
     
     ntimes = int(args.ntimes) + 1
@@ -122,13 +170,9 @@ def main(args):
             motif = line.strip().split(args.delimiter)[-1]
             print("Sample:", f, "Motif:", motif, file=sys.stderr)
             nseqs = 0
-            file = ""
-            for fname in fastafiles:
-                if f in fname:
-                    file = fname
-                    break
+            file = fasta_lookup.get(f, "")
             if not os.path.isfile(file):
-                print("File", file, "not found. No sequences for this?", file=sys.stderr)
+                print("File for sample", f, "not found in", args.indir, file=sys.stderr)
                 continue
             
             motifes = []
@@ -149,14 +193,14 @@ def main(args):
                         repeat_count = count_repeats_relaxed(line, motif, ntimes, allowed_mismatches_per_motif, allowed_total_mismatches)
                     countdict[repeat_count] += 1
                     if args.detailed:
-                        locus_name = os.path.basename(file.split(".fa")[0])
+                        locus_name = f
                         if locus_name not in detailed_bins:
                             detailed_bins[locus_name] = {}
                         if repeat_count not in detailed_bins[locus_name]:
                             detailed_bins[locus_name][repeat_count] = []
                         detailed_bins[locus_name][repeat_count].append(seqname)
             
-            outstr = os.path.basename(file.split(".fa")[0])
+            outstr = f
             for el in countdict.keys():
                 outstr += "\t"
                 if args.relative:

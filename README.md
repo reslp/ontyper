@@ -71,7 +71,7 @@ ontyper genotypes extract -i reads.fasta -g genotypes-detailed.tsv -l TTMock01_T
 ### Visualize genotype distributions
 
 ```bash
-ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445_single_all
+ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445
 ```
 
 ### Build an interactive HTML report

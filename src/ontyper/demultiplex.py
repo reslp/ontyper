@@ -371,14 +371,11 @@ def run_demultiplex(records, samples, groups, args):
     }
     if not os.path.isdir(args.outdir):
         os.makedirs(args.outdir)
-    suffix = "_single_all.fas"
-    if args.mode == "dual":
-        suffix = "_dual_all.fas"
     outfiles = {}
     sample_counts = {}
     for sample in samples:
         sample_counts[sample["name"]] = 0
-        outfile = os.path.join(args.outdir, sample["name"] + suffix)
+        outfile = os.path.join(args.outdir, sample["name"] + ".fas")
         outfiles[sample["name"]] = outfile
         with open(outfile, "w") as f:
             pass
