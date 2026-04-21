@@ -4,6 +4,7 @@ ontyper CLI - Main entry point
 
 Command structure:
     ontyper demultiplex [options]
+    ontyper report [options]
     ontyper genotypes identify [options]
     ontyper genotypes extract [options]
     ontyper genotypes visualize [options]
@@ -13,7 +14,7 @@ import sys
 import argparse
 
 from ontyper import __version__
-from ontyper import demultiplex
+from ontyper import demultiplex, report
 from ontyper.genotypes import identify, extract, visualize
 
 
@@ -26,6 +27,7 @@ def main(args=None):
         epilog="""
 Examples:
   ontyper demultiplex -i reads.fasta -d demfile.txt -o output/
+  ontyper report -d demultiplexed/ -g genotypes.tsv -o report.html
   ontyper genotypes identify -d demfile.txt -i demultiplexed/ --detailed
   ontyper genotypes extract -i reads.fasta -g detailed.tsv -l Locus1 -n 20x
   ontyper genotypes visualize -g genotypes.tsv -l Locus1
@@ -51,6 +53,20 @@ Examples:
     demux_parser.add_argument("-c", "--cutoff", help="Length cutoff specification", default="")
     demux_parser.set_defaults(func=demultiplex.main)
     
+    # -------------------------------------------------------------------------
+    # ontyper report
+    # -------------------------------------------------------------------------
+    report_parser = subparsers.add_parser(
+        "report",
+        help="Generate a single-file HTML summary report",
+        description="Create an interactive HTML report from demultiplexed reads and genotype results."
+    )
+    report_parser.add_argument("-d", "--demultiplexed", help="Directory with demultiplexed FASTA files", default=None)
+    report_parser.add_argument("-g", "--genotypes", help="genotypes.tsv file", default=None)
+    report_parser.add_argument("-o", "--output", help="Output HTML file (default: ontyper-report.html)", default="ontyper-report.html")
+    report_parser.add_argument("--title", help="Report title", default="ontyper report")
+    report_parser.set_defaults(func=report.main)
+
     # -------------------------------------------------------------------------
     # ontyper genotypes (subcommand group)
     # -------------------------------------------------------------------------
