@@ -65,6 +65,12 @@ ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ --detailed >
 ontyper genotypes extract -i reads.fasta -g genotypes-detailed.tsv -l TTMock01_Tth445 -n 20x
 ```
 
+### Visualize genotype distributions
+
+```bash
+ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445_single_all
+```
+
 ## Command Structure
 
 ```
@@ -72,7 +78,8 @@ ontyper
 ├── demultiplex              # Demultiplex ONT reads by primer/tag
 └── genotypes                # Genotype-related commands
     ├── identify             # Identify microsatellite repeat genotypes
-    └── extract              # Extract sequences for a specific genotype bin
+    ├── extract              # Extract sequences for a specific genotype bin
+    └── visualize            # Plot repeat-count distributions for one sample/locus
 ```
 
 ## Development

@@ -6,6 +6,7 @@ Command structure:
     ontyper demultiplex [options]
     ontyper genotypes identify [options]
     ontyper genotypes extract [options]
+    ontyper genotypes visualize [options]
 """
 
 import sys
@@ -13,7 +14,7 @@ import argparse
 
 from ontyper import __version__
 from ontyper import demultiplex
-from ontyper.genotypes import identify, extract
+from ontyper.genotypes import identify, extract, visualize
 
 
 def main(args=None):
@@ -27,6 +28,7 @@ Examples:
   ontyper demultiplex -i reads.fasta -d demfile.txt -o output/
   ontyper genotypes identify -d demfile.txt -i demultiplexed/ --detailed
   ontyper genotypes extract -i reads.fasta -g detailed.tsv -l Locus1 -n 20x
+  ontyper genotypes visualize -g genotypes.tsv -l Locus1
         """
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -86,6 +88,17 @@ Examples:
     extract_parser.add_argument("-n", "--number", help="Repeat bin to extract (e.g., 20x)", required=True)
     extract_parser.add_argument("-o", "--outfile", help="Output FASTA file (default: <locus>_<number>_sequences.fas)", default=None)
     extract_parser.set_defaults(func=extract.main)
+
+    # ontyper genotypes visualize
+    visualize_parser = geno_subparsers.add_parser(
+        "visualize",
+        help="Visualize genotype count distributions",
+        description="Create a publication-ready figure for one locus/sample from a genotype count table."
+    )
+    visualize_parser.add_argument("-g", "--genotypes", help="genotypes.tsv file", required=True)
+    visualize_parser.add_argument("-l", "--locus", help="Locus/sample name to plot", required=True)
+    visualize_parser.add_argument("-o", "--outfile", help="Output figure path (default: <locus>_genotypes.pdf)", default=None)
+    visualize_parser.set_defaults(func=visualize.main)
     
     # -------------------------------------------------------------------------
     # Parse and dispatch
