@@ -103,7 +103,7 @@ def main(args):
     Main entry point for genotype identification.
     
     Args:
-        args: Namespace object with demfile, indir, ntimes, method, delimiter, relative, detailed
+        args: Namespace object with demfile, indir, ntimes, method, delimiter, relative, detailed, output
     """
     method_name, allowed_mismatches_per_motif, allowed_total_mismatches = parse_method(args.method)
     
@@ -113,7 +113,8 @@ def main(args):
     
     ntimes = int(args.ntimes) + 1
     detailed_bins = {}
-    print("locus-sample\t", "\t".join([str(n)+"x" for n in range(0, ntimes)]), "\tnsequences")
+    output_lines = []
+    output_lines.append("locus-sample\t" + "\t".join([str(n) + "x" for n in range(0, ntimes)]) + "\tnsequences")
     
     with open(args.demfile, "r", encoding='utf-8-sig') as demfile:
         for line in demfile:
@@ -163,7 +164,15 @@ def main(args):
                 else:
                     outstr += str(countdict[el])
             outstr += "\t" + str(nseqs)
-            print(outstr)
+            output_lines.append(outstr)
+    
+    output_text = "\n".join(output_lines) + "\n"
+    if getattr(args, "output", None):
+        with open(args.output, "w") as out:
+            out.write(output_text)
+        print("Wrote genotype table to", args.output, file=sys.stderr)
+    else:
+        sys.stdout.write(output_text)
     
     if args.detailed:
         detailed_outfile = "genotypes-detailed.tsv"
@@ -184,5 +193,6 @@ if __name__ == "__main__":
     parser.add_argument("--delimiter", default=",")
     parser.add_argument("--relative", action="store_true", default=False)
     parser.add_argument("--detailed", action="store_true", default=False)
+    parser.add_argument("-o", "--output", default=None)
     args = parser.parse_args()
     sys.exit(main(args))

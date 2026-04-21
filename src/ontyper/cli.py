@@ -74,6 +74,7 @@ Examples:
     identify_parser.add_argument("--delimiter", help="Delimiter in demfile (default: ,)", default=",")
     identify_parser.add_argument("--relative", action="store_true", help="Output relative frequencies", default=False)
     identify_parser.add_argument("--detailed", action="store_true", help="Write genotypes-detailed.tsv with sequence names", default=False)
+    identify_parser.add_argument("-o", "--output", help="Write genotype table to this file instead of stdout", default=None)
     identify_parser.set_defaults(func=identify.main)
     
     # ontyper genotypes extract

@@ -55,8 +55,11 @@ ontyper demultiplex -i reads.fasta -d demultiplex.txt -o output_dir/
 ```bash
 ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ > genotypes.tsv
 
+# Or write the table directly to a file
+ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ -o genotypes.tsv
+
 # With detailed output (creates genotypes-detailed.tsv)
-ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ --detailed > genotypes.tsv
+ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ --detailed -o genotypes.tsv
 ```
 
 ### Extract sequences for a specific genotype
