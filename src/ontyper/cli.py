@@ -64,7 +64,6 @@ Examples:
     report_parser.add_argument("-d", "--demultiplexed", help="Directory with demultiplexed FASTA files", default=None)
     report_parser.add_argument("-g", "--genotypes", help="genotypes.tsv file", default=None)
     report_parser.add_argument("-o", "--output", help="Output HTML file (default: ontyper-report.html)", default="ontyper-report.html")
-    report_parser.add_argument("--title", help="Report title", default="ontyper report")
     report_parser.set_defaults(func=report.main)
 
     # -------------------------------------------------------------------------

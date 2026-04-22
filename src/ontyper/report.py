@@ -10,6 +10,7 @@ import sys
 
 
 FASTA_SUFFIXES = (".fas", ".fasta", ".fa")
+REPORT_TITLE = "ontyper report"
 
 
 def sample_name_from_path(path):
@@ -146,7 +147,7 @@ def build_summary(samples):
 def render_html(samples, args):
     """Render the full single-file HTML report."""
     data = {
-        "title": args.title,
+        "title": REPORT_TITLE,
         "summary": build_summary(samples),
         "samples": samples,
         "inputs": {
@@ -155,7 +156,7 @@ def render_html(samples, args):
         },
     }
     data_json = json.dumps(data).replace("</", "<\\/")
-    title_html = html.escape(args.title)
+    title_html = html.escape(REPORT_TITLE)
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -376,15 +377,28 @@ function formatNumber(value) {{
   return new Intl.NumberFormat().format(value);
 }}
 
-function nonZeroDistribution(sample) {{
+function fullDistribution(sample) {{
   if (!sample.repeat_bins || !sample.repeat_counts) return {{ bins: [], counts: [] }};
-  let last = 0;
-  for (let i = 0; i < sample.repeat_counts.length; i += 1) {{
-    if (sample.repeat_counts[i] > 0) last = i;
-  }}
   return {{
-    bins: sample.repeat_bins.slice(0, last + 1),
-    counts: sample.repeat_counts.slice(0, last + 1),
+    bins: sample.repeat_bins.slice(),
+    counts: sample.repeat_counts.slice(),
+  }};
+}}
+
+function nonZeroDistribution(sample) {{
+  const distribution = fullDistribution(sample);
+  let first = -1;
+  let last = -1;
+  for (let i = 0; i < distribution.counts.length; i += 1) {{
+    if (distribution.counts[i] > 0) {{
+      if (first === -1) first = i;
+      last = i;
+    }}
+  }}
+  if (first === -1) return distribution;
+  return {{
+    bins: distribution.bins.slice(first, last + 1),
+    counts: distribution.counts.slice(first, last + 1),
   }};
 }}
 
@@ -469,7 +483,7 @@ function renderChart(sample) {{
     return;
   }}
 
-  const distribution = nonZeroDistribution(sample);
+  const distribution = fullDistribution(sample);
   const bins = distribution.bins;
   const counts = distribution.counts;
   const width = CHART.clientWidth || 800;
@@ -560,5 +574,4 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--demultiplexed", default=None, help="Directory with demultiplexed FASTA files")
     parser.add_argument("-g", "--genotypes", default=None, help="genotypes.tsv file")
     parser.add_argument("-o", "--output", default="ontyper-report.html", help="Output HTML file")
-    parser.add_argument("--title", default="ontyper report", help="Report title")
     sys.exit(main(parser.parse_args()))
