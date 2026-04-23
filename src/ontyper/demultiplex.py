@@ -2,8 +2,9 @@
 """
 ontyper.demultiplex - Demultiplex ONT reads by primer and tag sequences
 
-This module demultiplexes FASTA reads using primer/tag combinations from a demultiplex file.
-Supports both single-pass and dual-pass demultiplexing modes.
+This module demultiplexes FASTA or FASTQ reads using primer/tag combinations
+from a demultiplex file. Supports both single-pass and dual-pass demultiplexing
+modes.
 """
 
 import sys
@@ -12,9 +13,10 @@ import csv
 from datetime import datetime
 import multiprocessing
 
-from Bio import SeqIO
 from Bio.Seq import Seq
 import edlib
+
+from ontyper.sequence_io import detect_sequence_format, iter_sequence_records
 
 
 # IUPAC ambiguity correspondences for edlib
@@ -245,10 +247,10 @@ def required_window(groups, mode):
 
 
 def load_records(seqfile, cutoff):
-    """Load FASTA records, applying length cutoff."""
+    """Load FASTA/FASTQ records, applying length cutoff."""
     records = []
     total = 0
-    for record in SeqIO.parse(seqfile, "fasta"):
+    for record in iter_sequence_records(seqfile):
         total += 1
         seq = str(record.seq)
         if not passes_cutoff(len(seq), cutoff):
@@ -465,6 +467,7 @@ def main(args):
         
         cutoff = parse_cutoff(args.cutoff)
         print("Reading in sequences from file:", args.infile)
+        print("Detected input format:", detect_sequence_format(args.infile).upper())
         
         if cutoff["type"] == "global":
             print("Using global length cutoff to filter sequences between", cutoff["min"], "and", cutoff["max"], ".")

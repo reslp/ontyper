@@ -48,6 +48,7 @@ uv pip install -e .
 
 ```bash
 ontyper demultiplex -i reads.fasta -d demultiplex.txt -o output_dir/
+ontyper demultiplex -i reads.fastq.gz -d demultiplex.txt -o output_dir/
 ```
 
 ### Identify genotypes
@@ -66,6 +67,7 @@ ontyper genotypes identify -d demultiplex.txt -i demultiplexed_dir/ --detailed -
 
 ```bash
 ontyper genotypes extract -i reads.fasta -g genotypes-detailed.tsv -l TTMock01_Tth445 -n 20x
+ontyper genotypes extract -i reads.fastq.gz -g genotypes-detailed.tsv -l TTMock01_Tth445 -n 20x
 ```
 
 ### Visualize genotype distributions

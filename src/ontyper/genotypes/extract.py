@@ -3,11 +3,12 @@
 ontyper.genotypes.extract - Extract sequences for a specific genotype bin
 
 This module extracts all sequences belonging to a specific locus and repeat count
-from the original FASTA file using the genotypes-detailed.tsv file.
+from the original FASTA or FASTQ file using the genotypes-detailed.tsv file.
 """
 
 import sys
-import os
+
+from ontyper.sequence_io import iter_sequence_records
 
 
 def read_sequence_names(genotype_file, locus_name, repeat_name):
@@ -44,12 +45,12 @@ def read_sequence_names(genotype_file, locus_name, repeat_name):
     return sequence_names
 
 
-def write_matching_sequences(fasta_file, sequence_names, outfile):
+def write_matching_sequences(sequence_file, sequence_names, outfile):
     """
-    Write sequences matching the given names to output FASTA.
+    Write matching sequences from FASTA/FASTQ input to output FASTA.
     
     Args:
-        fasta_file: Input FASTA file path
+        sequence_file: Input FASTA/FASTQ file path
         sequence_names: Set of sequence names to extract
         outfile: Output FASTA file path
     
@@ -57,27 +58,13 @@ def write_matching_sequences(fasta_file, sequence_names, outfile):
         Number of sequences written
     """
     written = 0
-    current_header = ""
-    current_sequence = []
-
-    with open(fasta_file, "r") as infile, open(outfile, "w") as out:
-        for line in infile:
-            if line.startswith(">"):
-                if current_header and current_header in sequence_names:
-                    out.write(">" + current_header + "\n")
-                    out.write("".join(current_sequence))
-                    written += 1
-                current_header = line.strip()[1:]
-                current_sequence = []
-            else:
-                current_sequence.append(line)
-
-        # Don't forget the last sequence
-        if current_header and current_header in sequence_names:
-            out.write(">" + current_header + "\n")
-            out.write("".join(current_sequence))
+    with open(outfile, "w") as out:
+        for record in iter_sequence_records(sequence_file):
+            if record.description not in sequence_names:
+                continue
+            out.write(">" + record.description + "\n")
+            out.write(str(record.seq) + "\n")
             written += 1
-
     return written
 
 
@@ -111,7 +98,7 @@ if __name__ == "__main__":
     # Allow running this module directly for testing
     import argparse
     parser = argparse.ArgumentParser(description="Extract sequences for a genotype bin")
-    parser.add_argument("-i", "--infile", required=True)
+    parser.add_argument("-i", "--infile", required=True, help="Input FASTA/FASTQ file")
     parser.add_argument("-g", "--genotypes", required=True)
     parser.add_argument("-l", "--locus", required=True)
     parser.add_argument("-n", "--number", required=True)

@@ -43,9 +43,9 @@ Examples:
     demux_parser = subparsers.add_parser(
         "demultiplex",
         help="Demultiplex ONT reads by primer and tag sequences",
-        description="Demultiplex FASTA reads using primer/tag combinations from a demultiplex file."
+        description="Demultiplex FASTA or FASTQ reads using primer/tag combinations from a demultiplex file."
     )
-    demux_parser.add_argument("-i", "--infile", help="Input FASTA file with reads", required=True)
+    demux_parser.add_argument("-i", "--infile", help="Input FASTA/FASTQ file with reads (.gz supported)", required=True)
     demux_parser.add_argument("-d", "--demfile", help="Demultiplex definition file", required=True)
     demux_parser.add_argument("-t", "--threads", help="Number of threads (default: 1)", type=int, default=1)
     demux_parser.add_argument("-m", "--mode", help="Demultiplexing mode: single or dual (default: single)", default="single")
@@ -96,9 +96,9 @@ Examples:
     extract_parser = geno_subparsers.add_parser(
         "extract",
         help="Extract sequences belonging to a specific genotype bin",
-        description="Extract all sequences for a given locus and repeat count from the original FASTA."
+        description="Extract all sequences for a given locus and repeat count from the original FASTA/FASTQ input."
     )
-    extract_parser.add_argument("-i", "--infile", help="Original input FASTA file", required=True)
+    extract_parser.add_argument("-i", "--infile", help="Original input FASTA/FASTQ file (.gz supported)", required=True)
     extract_parser.add_argument("-g", "--genotypes", help="genotypes-detailed.tsv file", required=True)
     extract_parser.add_argument("-l", "--locus", help="Locus name to extract", required=True)
     extract_parser.add_argument("-n", "--number", help="Repeat bin to extract (e.g., 20x)", required=True)
