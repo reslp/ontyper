@@ -142,7 +142,7 @@ def header_map(header):
 def is_header_row(row):
     """Check if row looks like a header."""
     joined = " ".join(row).lower()
-    if "primer" in joined or "tag" in joined or "demultiplex" in joined or "sample" in joined:
+    if "primer" in joined or "demultiplex" in joined or "sample" in joined:
         return True
     return False
 
@@ -160,6 +160,7 @@ def read_demfile(path, delimiter):
     with open(path, "r", encoding="utf-8-sig") as infile:
         lines = [line.strip() for line in infile if line.strip()]
     if len(lines) == 0:
+        print("No lines found")
         return []
     delim = detect_delimiter(lines, delimiter)
     rows = list(csv.reader(lines, delimiter=delim))
