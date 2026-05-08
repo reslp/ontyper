@@ -559,7 +559,7 @@ def main(args):
         print("No report data found in the provided inputs", file=sys.stderr)
         return 1
 
-    outfile = args.output or "ontyper-report.html"
+    outfile = args.outfile or "ontyper-report.html"
     html = render_html(samples, args)
     with open(outfile, "w", encoding="utf-8") as out:
         out.write(html)
@@ -573,5 +573,5 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a single-file HTML report")
     parser.add_argument("-d", "--demultiplexed", default=None, help="Directory with demultiplexed FASTA files")
     parser.add_argument("-g", "--genotypes", default=None, help="genotypes.tsv file")
-    parser.add_argument("-o", "--output", default="ontyper-report.html", help="Output HTML file")
+    parser.add_argument("-o", "--outfile", default="ontyper-report.html", help="Output HTML file")
     sys.exit(main(parser.parse_args()))

@@ -211,8 +211,8 @@ def main(args):
             output_lines.append(outstr)
     
     output_text = "\n".join(output_lines) + "\n"
-    if getattr(args, "output", None):
-        with open(args.output, "w") as out:
+    if getattr(args, "outfile", None):
+        with open(args.outfile, "w") as out:
             out.write(output_text)
         print("Wrote genotype table to", args.output, file=sys.stderr)
     else:
@@ -237,6 +237,6 @@ if __name__ == "__main__":
     parser.add_argument("--delimiter", default=",")
     parser.add_argument("--relative", action="store_true", default=False)
     parser.add_argument("--detailed", action="store_true", default=False)
-    parser.add_argument("-o", "--output", default=None)
+    parser.add_argument("-o", "--outfile", default=None)
     args = parser.parse_args()
     sys.exit(main(args))
