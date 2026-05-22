@@ -214,7 +214,7 @@ def main(args):
     if getattr(args, "outfile", None):
         with open(args.outfile, "w") as out:
             out.write(output_text)
-        print("Wrote genotype table to", args.output, file=sys.stderr)
+        print("Wrote genotype table to", args.outfile, file=sys.stderr)
     else:
         sys.stdout.write(output_text)
     
