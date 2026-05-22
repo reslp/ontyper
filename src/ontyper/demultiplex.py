@@ -155,32 +155,55 @@ def get_field(row, indices, names, default=""):
     return default
 
 
+def flag_demfile_line(line, delimiter, line_number):
+    """Flag demultiplex rows that do not match the expected scheme."""
+    fields = line.split(delimiter)
+    problems = []
+    if len(fields) != 7:
+        problems.append("expected 7 fields, found " + str(len(fields)))
+    if len(fields) > 0 and any(char.isspace() for char in fields[0]):
+        problems.append("field 1 contains spaces")
+    for field_number in range(2, min(len(fields), 6) + 1):
+        value = fields[field_number - 1].strip().upper()
+        if not value or any(base not in "ATCG" for base in value):
+            problems.append("field " + str(field_number) + " contains non-ATCG characters")
+    if problems:
+        print(
+            "Demultiplex file warning: line " + str(line_number) + " does not match scheme (" + "; ".join(problems) + ")",
+            file=sys.stderr,
+        )
+    return problems
+
+
 def read_demfile(path, delimiter):
     """Read and parse demultiplex file."""
     with open(path, "r", encoding="utf-8-sig") as infile:
-        lines = [line.strip() for line in infile if line.strip()]
-    if len(lines) == 0:
+        line_entries = [(line_number, line.strip()) for line_number, line in enumerate(infile, start=1) if line.strip()]
+    if len(line_entries) == 0:
         print("No lines found")
         return []
+    lines = [line for _, line in line_entries]
     delim = detect_delimiter(lines, delimiter)
-    rows = list(csv.reader(lines, delimiter=delim))
+    rows = [(line_number, line, next(csv.reader([line], delimiter=delim))) for line_number, line in line_entries]
     samples = []
-    if is_header_row(rows[0]):
-        indices = header_map(rows[0])
-        for row in rows[1:]:
-            if len(row) == 0:
-                continue
+    if is_header_row(rows[0][2]):
+        indices = header_map(rows[0][2])
+        data_rows = rows[1:]
+    else:
+        indices = None
+        data_rows = rows
+    for line_number, line, row in data_rows:
+        if len(row) == 0:
+            continue
+        flag_demfile_line(line, delim, line_number)
+        if indices is not None:
             name = get_field(row, indices, ["demultiplex_name", "name", "sample"], row[0].strip())
             tag_fwd = get_field(row, indices, ["tag_fwd", "tag1", "tag_forward"])
             tag_rev = get_field(row, indices, ["tag_rev", "tag2", "tag_reverse"])
             primer_fwd = get_field(row, indices, ["primer_fwd", "primer1", "forward_primer"])
             primer_rev = get_field(row, indices, ["primer_rev", "primer2", "reverse_primer"])
-            extra = get_field(row, indices, ["motif", "tail", "extra"], "")
-            if not name or not tag_fwd or not tag_rev or not primer_fwd or not primer_rev:
-                continue
-            samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, extra])
-    else:
-        for row in rows:
+            extra = get_field(row, indices, ["tail", "extra", "motif"], "")
+        else:
             if len(row) < 5:
                 continue
             name = row[0].strip()
@@ -191,7 +214,9 @@ def read_demfile(path, delimiter):
             extra = ""
             if len(row) > 5:
                 extra = row[5].strip()
-            samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, extra])
+        if not name or not tag_fwd or not tag_rev or not primer_fwd or not primer_rev:
+            continue
+        samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, extra])
     return samples
 
 
