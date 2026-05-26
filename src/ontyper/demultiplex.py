@@ -131,48 +131,33 @@ def detect_delimiter(lines, requested):
     return ","
 
 
-def header_map(header):
-    """Create column index map from header row."""
-    mapped = {}
-    for i, name in enumerate(header):
-        mapped[name.strip().lower()] = i
-    return mapped
+EXPECTED_DEMFILE_COLUMNS = ["name", "primer_fwd", "primer_rev", "tag_fwd", "tag_rev", "motif"]
+EXPECTED_DEMFILE_FORMAT = ", ".join(EXPECTED_DEMFILE_COLUMNS)
 
 
-def is_header_row(row):
-    """Check if row looks like a header."""
-    joined = " ".join(row).lower()
-    if "primer" in joined or "demultiplex" in joined or "sample" in joined:
-        return True
-    return False
+class DemultiplexFileError(ValueError):
+    """Raised when the demultiplex file does not match the required format."""
 
 
-def get_field(row, indices, names, default=""):
-    """Get field value by trying multiple column names."""
-    for name in names:
-        if name in indices and indices[name] < len(row):
-            return row[indices[name]].strip()
-    return default
-
-
-def flag_demfile_line(line, delimiter, line_number):
-    """Flag demultiplex rows that do not match the expected scheme."""
-    fields = line.split(delimiter)
+def validate_demfile_row(row, line_number):
+    """Validate one demultiplex row against the required column order."""
     problems = []
-    if len(fields) != 7:
-        problems.append("expected 7 fields, found " + str(len(fields)))
-    if len(fields) > 0 and any(char.isspace() for char in fields[0]):
-        problems.append("field 1 contains spaces")
-    for field_number in range(2, min(len(fields), 6) + 1):
-        value = fields[field_number - 1].strip().upper()
+    if len(row) != 6:
+        problems.append("expected 6 fields, found " + str(len(row)))
+    if len(row) > 0:
+        if not row[0].strip():
+            problems.append("field 1 is empty")
+        if any(char.isspace() for char in row[0]):
+            problems.append("field 1 contains spaces")
+    for field_number in range(2, min(len(row), 6) + 1):
+        value = row[field_number - 1].strip().upper()
         if not value or any(base not in "ATCG" for base in value):
             problems.append("field " + str(field_number) + " contains non-ATCG characters")
     if problems:
-        print(
-            "Demultiplex file warning: line " + str(line_number) + " does not match scheme (" + "; ".join(problems) + ")",
-            file=sys.stderr,
+        raise DemultiplexFileError(
+            "Demultiplex file error: line " + str(line_number) + " does not match required format "
+            + EXPECTED_DEMFILE_FORMAT + " (" + "; ".join(problems) + ")"
         )
-    return problems
 
 
 def read_demfile(path, delimiter):
@@ -184,39 +169,30 @@ def read_demfile(path, delimiter):
         return []
     lines = [line for _, line in line_entries]
     delim = detect_delimiter(lines, delimiter)
-    rows = [(line_number, line, next(csv.reader([line], delimiter=delim))) for line_number, line in line_entries]
+    rows = [(line_number, next(csv.reader([line], delimiter=delim))) for line_number, line in line_entries]
+    if [field.strip().lower() for field in rows[0][1]] == EXPECTED_DEMFILE_COLUMNS:
+        rows = rows[1:]
     samples = []
-    if is_header_row(rows[0][2]):
-        indices = header_map(rows[0][2])
-        data_rows = rows[1:]
-    else:
-        indices = None
-        data_rows = rows
-    for line_number, line, row in data_rows:
-        if len(row) == 0:
+    primer_length = 0
+    tag_length = 0
+    for line_number, row in rows:
+        if len(row) == 0 or all(not field.strip() for field in row):
             continue
-        flag_demfile_line(line, delim, line_number)
-        if indices is not None:
-            name = get_field(row, indices, ["demultiplex_name", "name", "sample"], row[0].strip())
-            tag_fwd = get_field(row, indices, ["tag_fwd", "tag1", "tag_forward"])
-            tag_rev = get_field(row, indices, ["tag_rev", "tag2", "tag_reverse"])
-            primer_fwd = get_field(row, indices, ["primer_fwd", "primer1", "forward_primer"])
-            primer_rev = get_field(row, indices, ["primer_rev", "primer2", "reverse_primer"])
-            extra = get_field(row, indices, ["tail", "extra", "motif"], "")
-        else:
-            if len(row) < 5:
-                continue
-            name = row[0].strip()
-            tag_fwd = row[1].strip()
-            tag_rev = row[2].strip()
-            primer_fwd = row[3].strip()
-            primer_rev = row[4].strip()
-            extra = ""
-            if len(row) > 5:
-                extra = row[5].strip()
-        if not name or not tag_fwd or not tag_rev or not primer_fwd or not primer_rev:
-            continue
-        samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, extra])
+        validate_demfile_row(row, line_number)
+        name = row[0].strip()
+        primer_fwd = row[1].strip()
+        primer_rev = row[2].strip()
+        tag_fwd = row[3].strip()
+        tag_rev = row[4].strip()
+        motif = row[5].strip()
+        primer_length += len(primer_fwd) + len(primer_rev)
+        tag_length += len(tag_fwd) + len(tag_rev)
+        samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, motif])
+    if samples and primer_length <= tag_length:
+        raise DemultiplexFileError(
+            "Demultiplex file error: columns appear to be in the wrong order. Required format is "
+            + EXPECTED_DEMFILE_FORMAT + "."
+        )
     return samples
 
 
@@ -230,7 +206,7 @@ def build_scheme(sample_rows):
         tag_rev = row[2]
         primer_fwd = row[3]
         primer_rev = row[4]
-        extra = row[5]
+        motif = row[5]
         sample = {
             "name": name,
             "tag_fwd": tag_fwd,
@@ -238,8 +214,9 @@ def build_scheme(sample_rows):
             "tag_rev_rc": revcomp(tag_rev),
             "primer_fwd": primer_fwd,
             "primer_rev": primer_rev,
+            "motif": motif,
             "single_left": tag_fwd + primer_fwd,
-            "single_right": revcomp(tag_rev + primer_rev + extra),
+            "single_right": revcomp(tag_rev + primer_rev + motif),
         }
         samples.append(sample)
         key = primer_fwd + "\t" + primer_rev
@@ -477,7 +454,11 @@ def main(args):
         
         print("Output directory:", args.outdir)
         print("Reading demultiplex file:", args.demfile)
-        sample_rows = read_demfile(args.demfile, args.delimiter)
+        try:
+            sample_rows = read_demfile(args.demfile, args.delimiter)
+        except DemultiplexFileError as error:
+            print(error, file=sys.stderr)
+            return 1
         if len(sample_rows) == 0:
             print("No demultiplex information found in", args.demfile, file=sys.stderr)
             return 1
