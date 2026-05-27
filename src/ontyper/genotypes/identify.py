@@ -9,8 +9,9 @@ import sys
 import glob
 import os
 
+from ontyper import FASTA_SUFFIXES
 
-FASTA_SUFFIXES = (".fas", ".fasta", ".fa")
+
 LEGACY_DEMULTIPLEX_SUFFIXES = ("_single_all", "_dual_all")
 
 

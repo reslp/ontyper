@@ -4,9 +4,7 @@ import gzip
 
 from Bio import SeqIO
 
-
-FASTA_SUFFIXES = (".fasta", ".fa", ".fas", ".fna")
-FASTQ_SUFFIXES = (".fastq", ".fq")
+from ontyper import FASTA_SUFFIXES, FASTQ_SUFFIXES
 
 
 def _strip_gzip_suffix(path):

@@ -131,7 +131,7 @@ def detect_delimiter(lines, requested):
     return ","
 
 
-EXPECTED_DEMFILE_COLUMNS = ["name", "primer_fwd", "primer_rev", "tag_fwd", "tag_rev", "motif"]
+EXPECTED_DEMFILE_COLUMNS = ["name", "tag_fwd", "tag_rev", "primer_fwd", "primer_rev", "motif"]
 EXPECTED_DEMFILE_FORMAT = ", ".join(EXPECTED_DEMFILE_COLUMNS)
 
 
@@ -180,10 +180,10 @@ def read_demfile(path, delimiter):
             continue
         validate_demfile_row(row, line_number)
         name = row[0].strip()
-        primer_fwd = row[1].strip()
-        primer_rev = row[2].strip()
-        tag_fwd = row[3].strip()
-        tag_rev = row[4].strip()
+        tag_fwd = row[1].strip()
+        tag_rev = row[2].strip()
+        primer_fwd = row[3].strip()
+        primer_rev = row[4].strip()
         motif = row[5].strip()
         primer_length += len(primer_fwd) + len(primer_rev)
         tag_length += len(tag_fwd) + len(tag_rev)

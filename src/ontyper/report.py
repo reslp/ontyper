@@ -8,8 +8,9 @@ import json
 import os
 import sys
 
+from ontyper import FASTA_SUFFIXES
 
-FASTA_SUFFIXES = (".fas", ".fasta", ".fa")
+
 REPORT_TITLE = "ontyper report"
 
 
