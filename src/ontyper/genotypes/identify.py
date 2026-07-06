@@ -10,6 +10,7 @@ import glob
 import os
 
 from ontyper import FASTA_SUFFIXES
+from ontyper.sequence_io import strip_fasta_suffix
 
 
 LEGACY_DEMULTIPLEX_SUFFIXES = ("_single_all", "_dual_all")
@@ -102,14 +103,6 @@ def write_detailed_output(detailed_bins, outfile):
                     continue
                 out.write(locus_name + "\t" + str(repeat_count) + "x\t" + ",".join(seqnames) + "\n")
 
-
-def strip_fasta_suffix(name):
-    """Remove a FASTA suffix from a file name or path stem."""
-    basename = os.path.basename(name)
-    for suffix in FASTA_SUFFIXES:
-        if basename.endswith(suffix):
-            return basename[:-len(suffix)]
-    return basename
 
 
 def normalize_sample_name(name):

@@ -1,6 +1,7 @@
 """Helpers for reading plain or gzipped FASTA/FASTQ files."""
 
 import gzip
+import os
 
 from Bio import SeqIO
 
@@ -50,6 +51,15 @@ def iter_sequence_records(path):
     file_format = detect_sequence_format(path)
     with open_sequence_file(path) as handle:
         yield from SeqIO.parse(handle, file_format)
+
+
+def strip_fasta_suffix(path):
+    """Remove a known FASTA suffix from a file name or path."""
+    name = os.path.basename(str(path))
+    for suffix in FASTA_SUFFIXES:
+        if name.endswith(suffix):
+            return name[:-len(suffix)]
+    return name
 
 
 def parse_genotype_header(line):

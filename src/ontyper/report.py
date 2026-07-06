@@ -9,19 +9,11 @@ import os
 import sys
 
 from ontyper import FASTA_SUFFIXES
-from ontyper.sequence_io import parse_genotype_header
+from ontyper.sequence_io import parse_genotype_header, strip_fasta_suffix
 
 
 REPORT_TITLE = "ontyper report"
 
-
-def sample_name_from_path(path):
-    """Return sample name from a FASTA file path."""
-    name = os.path.basename(path)
-    for suffix in FASTA_SUFFIXES:
-        if name.endswith(suffix):
-            return name[: -len(suffix)]
-    return name
 
 
 def count_fasta_records(path):
@@ -49,7 +41,7 @@ def read_demultiplexed_directory(indir):
             continue
         if not name.endswith(FASTA_SUFFIXES):
             continue
-        sample_name = sample_name_from_path(path)
+        sample_name = strip_fasta_suffix(path)
         samples[sample_name] = {"demultiplexed_reads": count_fasta_records(path)}
     return samples
 
