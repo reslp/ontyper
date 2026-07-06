@@ -1,3 +1,9 @@
+
+
+<p align="center">
+  <img src="assets/ontyper-icon-ont.png" alt="ontyper logo" width="160">
+</p>
+
 # ontyper
 
 Microsatellite genotyping toolkit for Oxford Nanopore sequencing data.
@@ -80,18 +86,6 @@ ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445
 
 ```bash
 ontyper report -d demultiplexed_dir/ -g genotypes.tsv -o report.html
-```
-
-## Command Structure
-
-```
-ontyper
-├── demultiplex              # Demultiplex ONT reads by primer/tag
-├── report                   # Build an interactive single-file HTML report
-└── genotypes                # Genotype-related commands
-    ├── identify             # Identify microsatellite repeat genotypes
-    ├── extract              # Extract sequences for a specific genotype bin
-    └── visualize            # Plot repeat-count distributions for one sample/locus
 ```
 
 ## Development
