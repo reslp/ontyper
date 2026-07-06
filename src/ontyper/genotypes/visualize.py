@@ -16,17 +16,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import MaxNLocator
 
-
-def parse_header(line):
-    """Return repeat-bin labels from the header row."""
-    parts = [part.strip() for part in line.rstrip("\n").split("\t")]
-    bins = []
-    for part in parts[1:]:
-        if part == "nsequences":
-            break
-        if part.endswith("x"):
-            bins.append(part)
-    return bins
+from ontyper.sequence_io import parse_genotype_header
 
 
 def parse_row(line, bins):
@@ -45,7 +35,7 @@ def read_counts(genotype_file, locus_name):
     """Read repeat-count distribution for one locus/sample."""
     with open(genotype_file, "r", encoding="utf-8-sig") as infile:
         header = infile.readline()
-        bins = parse_header(header)
+        bins = parse_genotype_header(header)
         for line in infile:
             if not line.strip():
                 continue

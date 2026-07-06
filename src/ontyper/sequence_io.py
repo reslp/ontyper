@@ -50,3 +50,15 @@ def iter_sequence_records(path):
     file_format = detect_sequence_format(path)
     with open_sequence_file(path) as handle:
         yield from SeqIO.parse(handle, file_format)
+
+
+def parse_genotype_header(line):
+    """Return repeat-bin labels from a genotype TSV header row."""
+    parts = [part.strip() for part in line.rstrip("\n").split("\t")]
+    repeat_bins = []
+    for part in parts[1:]:
+        if part == "nsequences":
+            break
+        if part.endswith("x"):
+            repeat_bins.append(part)
+    return repeat_bins

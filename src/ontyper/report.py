@@ -9,6 +9,7 @@ import os
 import sys
 
 from ontyper import FASTA_SUFFIXES
+from ontyper.sequence_io import parse_genotype_header
 
 
 REPORT_TITLE = "ontyper report"
@@ -52,17 +53,6 @@ def read_demultiplexed_directory(indir):
         samples[sample_name] = {"demultiplexed_reads": count_fasta_records(path)}
     return samples
 
-
-def parse_genotype_header(line):
-    """Parse the genotype table header."""
-    parts = [part.strip() for part in line.rstrip("\n").split("\t")]
-    repeat_bins = []
-    for part in parts[1:]:
-        if part == "nsequences":
-            break
-        if part.endswith("x"):
-            repeat_bins.append(part)
-    return repeat_bins
 
 
 def read_genotype_table(path):
