@@ -160,39 +160,73 @@ def validate_demfile_row(row, line_number):
         )
 
 
-def read_demfile(path, delimiter):
-    """Read and parse demultiplex file."""
+def read_nonempty_lines(path):
+    """Read a demultiplex file and return numbered, non-empty stripped lines."""
     with open(path, "r", encoding="utf-8-sig") as infile:
-        line_entries = [(line_number, line.strip()) for line_number, line in enumerate(infile, start=1) if line.strip()]
-    if len(line_entries) == 0:
-        print("No lines found")
-        return []
+        return [(line_number, line.strip()) for line_number, line in enumerate(infile, start=1) if line.strip()]
+
+
+def parse_demfile_rows(line_entries, delimiter):
+    """Parse numbered demultiplex-file lines into CSV rows using the requested or detected delimiter."""
     lines = [line for _, line in line_entries]
     delim = detect_delimiter(lines, delimiter)
-    rows = [(line_number, next(csv.reader([line], delimiter=delim))) for line_number, line in line_entries]
-    if [field.strip().lower() for field in rows[0][1]] == EXPECTED_DEMFILE_COLUMNS:
-        rows = rows[1:]
-    samples = []
+    return [(line_number, next(csv.reader([line], delimiter=delim))) for line_number, line in line_entries]
+
+
+def has_demfile_header(row):
+    """Return True when a parsed row is the expected demultiplex-file header."""
+    return [field.strip().lower() for field in row] == EXPECTED_DEMFILE_COLUMNS
+
+
+def is_empty_demfile_row(row):
+    """Return True when a parsed row has no meaningful fields."""
+    return len(row) == 0 or all(not field.strip() for field in row)
+
+
+def row_to_sample(row):
+    """Normalize a validated demultiplex row into the internal sample list format."""
+    name = row[0].strip()
+    tag_fwd = row[1].strip()
+    tag_rev = row[2].strip()
+    primer_fwd = row[3].strip()
+    primer_rev = row[4].strip()
+    motif = row[5].strip()
+    return [name, tag_fwd, tag_rev, primer_fwd, primer_rev, motif]
+
+
+def validate_demfile_column_order(samples):
+    """Detect likely tag/primer column swaps using the existing total-length heuristic."""
     primer_length = 0
     tag_length = 0
-    for line_number, row in rows:
-        if len(row) == 0 or all(not field.strip() for field in row):
-            continue
-        validate_demfile_row(row, line_number)
-        name = row[0].strip()
-        tag_fwd = row[1].strip()
-        tag_rev = row[2].strip()
-        primer_fwd = row[3].strip()
-        primer_rev = row[4].strip()
-        motif = row[5].strip()
-        primer_length += len(primer_fwd) + len(primer_rev)
-        tag_length += len(tag_fwd) + len(tag_rev)
-        samples.append([name, tag_fwd, tag_rev, primer_fwd, primer_rev, motif])
+    for sample in samples:
+        primer_length += len(sample[3]) + len(sample[4])
+        tag_length += len(sample[1]) + len(sample[2])
     if samples and primer_length <= tag_length:
         raise DemultiplexFileError(
             "Demultiplex file error: columns appear to be in the wrong order. Required format is "
             + EXPECTED_DEMFILE_FORMAT + "."
         )
+
+
+def read_demfile(path, delimiter):
+    """Read, validate, and normalize the demultiplex file into sample rows."""
+    line_entries = read_nonempty_lines(path)
+    if len(line_entries) == 0:
+        print("No lines found")
+        return []
+
+    rows = parse_demfile_rows(line_entries, delimiter)
+    if has_demfile_header(rows[0][1]):
+        rows = rows[1:]
+
+    samples = []
+    for line_number, row in rows:
+        if is_empty_demfile_row(row):
+            continue
+        validate_demfile_row(row, line_number)
+        samples.append(row_to_sample(row))
+
+    validate_demfile_column_order(samples)
     return samples
 
 
