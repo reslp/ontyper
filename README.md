@@ -36,17 +36,6 @@ uv tool upgrade ontyper
 uv tool uninstall ontyper
 ```
 
-### For development
-
-```bash
-# Using pip (editable install)
-pip install -e .
-
-# Using uv in a virtual environment
-uv venv
-source .venv/bin/activate  # or .venv-mba/bin/activate on some systems
-uv pip install -e .
-```
 
 ## Usage
 
@@ -85,6 +74,14 @@ ontyper genotypes extract -i reads.fastq.gz -g genotypes-detailed.tsv -l TTMock0
 ```bash
 ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445
 ```
+
+### Build an interactive HTML report
+
+```bash
+ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv -o report.html
+```
+
+**These features are currently in development and not yet available in the online version:**
 
 ### Build allele prediction features
 
@@ -131,13 +128,18 @@ ontyper genotypes call \
   -o allele-calls.tsv
 ```
 
-### Build an interactive HTML report
-
-```bash
-ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv -o report.html
-```
 
 ## Development
+
+```bash
+# Using pip (editable install)
+pip install -e .
+
+# Using uv in a virtual environment
+uv venv
+source .venv/bin/activate  # or .venv-mba/bin/activate on some systems
+uv pip install -e .
+```
 
 ```bash
 # Install with dev dependencies
@@ -147,6 +149,3 @@ pip install -e ".[dev]"
 pytest
 ```
 
-## License
-
-MIT
