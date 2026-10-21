@@ -24,6 +24,10 @@ dependencies = [
     "biopython>=1.80",
     "edlib>=1.3.9",
     "matplotlib>=3.7",
+    "numpy>=1.24",
+    "pandas>=2.0",
+    "scikit-learn>=1.4",
+    "joblib>=1.3",
 ]
 
 [project.optional-dependencies]
