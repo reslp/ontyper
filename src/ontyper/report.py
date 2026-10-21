@@ -3,12 +3,14 @@
 ontyper.report - Generate a single-file HTML summary report
 """
 
+import csv
 import html
 import json
 import os
 import sys
 
 from ontyper import FASTA_SUFFIXES
+from ontyper.genotypes.features import read_true_alleles
 from ontyper.sequence_io import parse_genotype_header, strip_fasta_suffix
 
 
@@ -47,6 +49,13 @@ def read_demultiplexed_directory(indir):
 
 
 
+def detect_table_delimiter(header):
+    """Detect a simple delimiter from a table header line."""
+    counts = {delimiter: header.count(delimiter) for delimiter in ["\t", ",", ";"]}
+    delimiter, count = max(counts.items(), key=lambda item: item[1])
+    return delimiter if count > 0 else "\t"
+
+
 def read_genotype_table(path):
     """Read genotype count data from a TSV table."""
     samples = {}
@@ -80,7 +89,121 @@ def read_genotype_table(path):
     return repeat_bins, samples
 
 
-def build_samples(demultiplexed_dir, genotype_file):
+def prediction_sample_name(row):
+    """Return the report sample name for one prediction row."""
+    name = (row.get("name") or "").strip()
+    if name:
+        return name
+    sample_id = (row.get("sample_id") or "").strip()
+    locus_id = (row.get("locus_id") or "").strip()
+    if sample_id and locus_id:
+        return sample_id + "_" + locus_id
+    return sample_id or locus_id
+
+
+def parse_prediction_row(row):
+    """Normalize one prediction row for embedding in the report JSON."""
+    prediction = {
+        "sample_id": (row.get("sample_id") or "").strip(),
+        "locus_id": (row.get("locus_id") or "").strip(),
+        "allele_id": (row.get("allele_id") or "").strip(),
+    }
+    probability = (row.get("probability") or row.get("pred") or "").strip()
+    if probability:
+        prediction["probability"] = float(probability)
+    rank = (row.get("pred_rank_within_locus") or row.get("rank") or "").strip()
+    if rank:
+        prediction["rank"] = int(float(rank))
+    return prediction
+
+
+def read_prediction_table(path):
+    """Read model prediction results grouped by report sample name."""
+    samples = {}
+    if not path:
+        return samples
+    if not os.path.isfile(path):
+        print("Prediction file not found:", path, file=sys.stderr)
+        return samples
+
+    with open(path, "r", encoding="utf-8-sig", newline="") as infile:
+        header = infile.readline()
+        if not header:
+            return samples
+        delimiter = detect_table_delimiter(header)
+        infile.seek(0)
+        reader = csv.DictReader(infile, delimiter=delimiter)
+        for row in reader:
+            sample_name = prediction_sample_name(row)
+            if not sample_name:
+                continue
+            if sample_name not in samples:
+                samples[sample_name] = {"predictions": []}
+            samples[sample_name]["predictions"].append(parse_prediction_row(row))
+
+    for values in samples.values():
+        values["predictions"].sort(key=lambda item: (item.get("locus_id", ""), item.get("rank", 999999), -item.get("probability", -1)))
+        values["npredictions"] = len(values["predictions"])
+    return samples
+
+
+def read_true_allele_table(path):
+    """Read the training truth format and group distinct alleles by sample/locus."""
+    if not path:
+        return {}
+    truth = read_true_alleles(path)
+    samples = {}
+    for (sample_id, locus_id), group in truth.groupby(["sample_id", "locus_id"]):
+        sample_id, locus_id = str(sample_id), str(locus_id)
+        name = prediction_sample_name({"sample_id": sample_id, "locus_id": locus_id})
+        samples[name] = {
+            "sample_id": sample_id,
+            "locus_id": locus_id,
+            "true_alleles": sorted(group["true_allele"].astype(int).unique().tolist()),
+        }
+    return samples
+
+
+def compare_alleles(sample, predictions_supplied):
+    """Compare unique calls with known alleles; absent truth is not a negative label."""
+    calls = {}
+    for prediction in sample.get("predictions", []):
+        allele = int(prediction["allele_id"])
+        if allele not in calls or prediction.get("probability", -1) > calls[allele].get("probability", -1):
+            calls[allele] = prediction
+    truth = set(sample.get("true_alleles", []))
+    has_truth = "true_alleles" in sample
+    evaluated = has_truth and predictions_supplied
+    comparison = []
+    for allele in sorted(set(calls) | truth):
+        called = allele in calls
+        known_true = allele in truth if has_truth else None
+        status = "called" if called else "known"
+        if evaluated:
+            status = "correct" if called and known_true else "incorrect" if called else "missed"
+        row = dict(calls.get(allele, {}))
+        row.update({
+            "allele_id": allele,
+            "locus_id": row.get("locus_id", sample.get("locus_id", "")),
+            "called": called,
+            "known_true": known_true,
+            "status": status,
+        })
+        comparison.append(row)
+    overlap = None
+    if evaluated:
+        true_positives = len(set(calls) & truth)
+        overlap = {
+            "correct": true_positives,
+            "incorrect": len(set(calls) - truth),
+            "missed": len(truth - set(calls)),
+            "precision": true_positives / len(calls) if calls else None,
+            "recall": true_positives / len(truth) if truth else None,
+        }
+    return comparison, overlap
+
+
+def build_samples(demultiplexed_dir, genotype_file, prediction_file=None, true_allele_file=None):
     """Merge report data from the provided inputs."""
     merged = {}
 
@@ -93,14 +216,39 @@ def build_samples(demultiplexed_dir, genotype_file):
             merged[sample_name] = {}
         merged[sample_name].update(values)
 
+    prediction_samples = read_prediction_table(prediction_file)
+    for sample_name, values in prediction_samples.items():
+        if sample_name not in merged:
+            merged[sample_name] = {}
+        merged[sample_name].update(values)
+
+    for sample_name, values in read_true_allele_table(true_allele_file).items():
+        merged.setdefault(sample_name, {}).update(values)
+
     sample_list = []
     for sample_name in sorted(merged):
         entry = {"name": sample_name}
         entry.update(merged[sample_name])
+        entry["allele_comparison"], entry["allele_overlap"] = compare_alleles(entry, bool(prediction_file))
         if "demultiplexed_reads" not in entry and "nsequences" in entry:
             entry["demultiplexed_reads"] = entry["nsequences"]
         sample_list.append(entry)
     return sample_list
+
+
+def build_truth_statistics(samples):
+    """Summarize call/truth overlap across evaluated sample/locus entries only."""
+    evaluated = [sample["allele_overlap"] for sample in samples if sample.get("allele_overlap") is not None]
+    total = len(evaluated)
+    counts = {
+        "exact_matches": sum(values["correct"] > 0 and values["incorrect"] == 0 and values["missed"] == 0 for values in evaluated),
+        "with_missed_true_alleles": sum(values["missed"] > 0 for values in evaluated),
+        "with_no_true_allele_called": sum(values["correct"] == 0 for values in evaluated),
+    }
+    return {
+        "evaluated": total,
+        **{key: {"count": count, "proportion": count / total if total else None} for key, count in counts.items()},
+    }
 
 
 def build_summary(samples):
@@ -109,6 +257,8 @@ def build_summary(samples):
     total_genotyped = 0
     with_demultiplex = 0
     with_genotypes = 0
+    with_predictions = 0
+    total_predictions = 0
 
     for sample in samples:
         if "demultiplexed_reads" in sample:
@@ -117,13 +267,19 @@ def build_summary(samples):
         if "nsequences" in sample:
             total_genotyped += sample["nsequences"]
             with_genotypes += 1
+        if "predictions" in sample:
+            with_predictions += 1
+            total_predictions += len(sample["predictions"])
 
     return {
         "nsamples": len(samples),
         "samples_with_demultiplex": with_demultiplex,
         "samples_with_genotypes": with_genotypes,
+        "samples_with_predictions": with_predictions,
         "total_demultiplexed_reads": total_demultiplexed,
         "total_genotyped_reads": total_genotyped,
+        "total_predictions": total_predictions,
+        "truth_statistics": build_truth_statistics(samples),
     }
 
 
@@ -134,8 +290,10 @@ def render_html(samples, args):
         "summary": build_summary(samples),
         "samples": samples,
         "inputs": {
-            "demultiplexed_dir": args.demultiplexed,
-            "genotypes_file": args.genotypes,
+            "demultiplexed_dir": getattr(args, "demultiplexed", None),
+            "genotypes_file": getattr(args, "genotypes", None),
+            "predictions_file": getattr(args, "predictions", None),
+            "true_alleles_file": getattr(args, "true_alleles", None),
         },
     }
     data_json = json.dumps(data).replace("</", "<\\/")
@@ -243,6 +401,11 @@ body {{
 .summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }}
 .mini-stat {{ background: var(--panel-2); border-radius: 14px; padding: 16px; }}
 .mini-stat strong {{ display: block; font-size: 22px; margin-bottom: 6px; }}
+.truth-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
+#truthStatistics {{ margin-top: 18px; }}
+#truthStatistics p {{ color: var(--muted); font-size: 13px; }}
+.stat-green strong {{ color: #16a34a; }}
+.stat-red strong {{ color: #dc2626; }}
 .kv {{ display: grid; grid-template-columns: 220px 1fr; gap: 10px 16px; }}
 .kv-key {{ color: var(--muted); }}
 .table-wrap {{ overflow: auto; max-height: 360px; border: 1px solid var(--line); border-radius: 14px; }}
@@ -255,6 +418,20 @@ thead th {{ position: sticky; top: 0; background: var(--panel); }}
 svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
 .bar {{ fill: #4c78a8; }}
 .bar:hover {{ fill: #2563eb; }}
+.bar.called {{ fill: #f97316; }}
+.bar.called:hover {{ fill: #ea580c; }}
+.bar.correct {{ fill: #16a34a; }}
+.bar.correct:hover {{ fill: #15803d; }}
+.bar.missed, .bar.known {{ fill: #dc2626; }}
+.bar.missed:hover, .bar.known:hover {{ fill: #b91c1c; }}
+.allele-legend {{ display: flex; flex-wrap: wrap; gap: 10px 20px; margin-bottom: 14px; font-size: 13px; }}
+.allele-legend[hidden] {{ display: none; }}
+.legend-item {{ display: inline-flex; align-items: center; gap: 7px; }}
+.swatch {{ display: inline-block; width: 12px; height: 12px; border-radius: 3px; background: #4c78a8; }}
+.swatch.called, .swatch.incorrect {{ background: #f97316; }}
+.swatch.correct {{ background: #16a34a; }}
+.swatch.missed, .swatch.known {{ background: #dc2626; }}
+#alleleOverlap {{ margin: 0 0 14px; color: var(--muted); font-size: 14px; }}
 .axis, .grid {{ stroke: #cbd5e1; stroke-width: 1; }}
 .grid {{ stroke-dasharray: 3 4; }}
 .footer {{ color: var(--muted); font-size: 13px; text-align: right; }}
@@ -274,7 +451,7 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
 <body>
 <div class="header">
   <h1>{title_html}</h1>
-  <p>Interactive summary of demultiplexing and genotype identification results.</p>
+  <p>Interactive summary of demultiplexing and genotype identification results. Allele predictions are included when provided.</p>
 </div>
 <div class="layout">
   <aside class="sidebar">
@@ -297,11 +474,23 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
         <div class="mini-stat"><strong id="summaryDemux"></strong><span>Samples with demultiplexed reads</span></div>
         <div class="mini-stat"><strong id="summaryGenotypes"></strong><span>Samples with genotype table entries</span></div>
         <div class="mini-stat"><strong id="summaryReads"></strong><span>Total genotyped reads</span></div>
+        <div class="mini-stat"><strong id="summaryPredictions"></strong><span>Predicted allele rows</span></div>
+      </div>
+      <div id="truthStatistics" hidden>
+        <h2>Allele call accuracy</h2>
+        <div class="summary-grid truth-grid">
+          <div class="mini-stat stat-green"><strong id="summaryExactMatches"></strong><span>Exact matches: all true alleles called, no extra calls (all green)</span></div>
+          <div class="mini-stat stat-red"><strong id="summaryMissedTrue"></strong><span>Entries with uncalled true alleles</span></div>
+          <div class="mini-stat stat-red"><strong id="summaryNoTrueCalled"></strong><span>Entries with no known true allele called</span></div>
+        </div>
+        <p id="truthStatisticsNote"></p>
       </div>
       <div style="height: 18px"></div>
       <div class="kv">
         <div class="kv-key">Demultiplexed directory</div><div id="inputDemultiplexed"></div>
         <div class="kv-key">Genotype table</div><div id="inputGenotypes"></div>
+        <div class="kv-key">Prediction table</div><div id="inputPredictions"></div>
+        <div class="kv-key">True allele table</div><div id="inputTrueAlleles"></div>
       </div>
     </section>
 
@@ -310,6 +499,7 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
       <div class="card"><div class="card-label">Demultiplexed reads</div><div id="cardDemultiplexed" class="card-value">-</div></div>
       <div class="card"><div class="card-label">Genotyped reads</div><div id="cardGenotyped" class="card-value">-</div></div>
       <div class="card"><div class="card-label">Peak repeat bin</div><div id="cardPeak" class="card-value">-</div></div>
+      <div class="card"><div class="card-label">Predicted alleles</div><div id="cardPredictions" class="card-value">-</div></div>
     </section>
 
     <section class="panel">
@@ -325,10 +515,22 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
     <section class="panel">
       <div class="panel-header">
         <div>
+          <h2>Predicted alleles</h2>
+          <div class="panel-subtitle">Model-selected calls and known true alleles, when supplied</div>
+        </div>
+      </div>
+      <p id="alleleOverlap" hidden></p>
+      <div id="predictionContainer"></div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-header">
+        <div>
           <h2>Repeat count histogram</h2>
           <div class="panel-subtitle">Distribution of reads across repeat motif counts</div>
         </div>
       </div>
+      <div id="alleleLegend" class="allele-legend" aria-label="Allele color legend" hidden></div>
       <div id="chart"></div>
     </section>
 
@@ -352,6 +554,7 @@ const SAMPLE_LIST = document.getElementById('sampleList');
 const SEARCH = document.getElementById('search');
 const SAMPLE_INFO = document.getElementById('sampleInfo');
 const TABLE_CONTAINER = document.getElementById('tableContainer');
+const PREDICTION_CONTAINER = document.getElementById('predictionContainer');
 const CHART = document.getElementById('chart');
 let currentSample = null;
 
@@ -362,10 +565,12 @@ function formatNumber(value) {{
 
 function fullDistribution(sample) {{
   if (!sample.repeat_bins || !sample.repeat_counts) return {{ bins: [], counts: [] }};
-  return {{
-    bins: sample.repeat_bins.slice(),
-    counts: sample.repeat_counts.slice(),
-  }};
+  const counts = new Map(sample.repeat_bins.map((bin, i) => [Number(bin.replace(/x$/, '')), sample.repeat_counts[i]]));
+  for (const allele of sample.allele_comparison || []) {{
+    if (!counts.has(allele.allele_id)) counts.set(allele.allele_id, 0);
+  }}
+  const alleles = Array.from(counts.keys()).sort((a, b) => a - b);
+  return {{ bins: alleles.map(allele => `${{allele}}x`), counts: alleles.map(allele => counts.get(allele)) }};
 }}
 
 function nonZeroDistribution(sample) {{
@@ -399,14 +604,29 @@ function renderSummary() {{
   document.getElementById('summaryDemux').textContent = formatNumber(REPORT_DATA.summary.samples_with_demultiplex);
   document.getElementById('summaryGenotypes').textContent = formatNumber(REPORT_DATA.summary.samples_with_genotypes);
   document.getElementById('summaryReads').textContent = formatNumber(REPORT_DATA.summary.total_genotyped_reads);
+  document.getElementById('summaryPredictions').textContent = formatNumber(REPORT_DATA.summary.total_predictions);
   document.getElementById('inputDemultiplexed').textContent = REPORT_DATA.inputs.demultiplexed_dir || '-';
   document.getElementById('inputGenotypes').textContent = REPORT_DATA.inputs.genotypes_file || '-';
+  document.getElementById('inputPredictions').textContent = REPORT_DATA.inputs.predictions_file || '-';
+  document.getElementById('inputTrueAlleles').textContent = REPORT_DATA.inputs.true_alleles_file || '-';
+  document.getElementById('truthStatistics').hidden = !REPORT_DATA.inputs.true_alleles_file;
+  const stats = REPORT_DATA.summary.truth_statistics;
+  for (const [id, key] of [['summaryExactMatches', 'exact_matches'], ['summaryMissedTrue', 'with_missed_true_alleles'], ['summaryNoTrueCalled', 'with_no_true_allele_called']]) {{
+    const value = stats[key];
+    document.getElementById(id).textContent = value.proportion === null
+      ? 'Not evaluated'
+      : `${{(100 * value.proportion).toFixed(1)}}% (${{value.count}}/${{stats.evaluated}})`;
+  }}
+  document.getElementById('truthStatisticsNote').textContent = stats.evaluated
+    ? `Based on ${{stats.evaluated}} evaluated sample/locus entries; entries without truth are excluded. Entries with no true allele called also count as having uncalled true alleles, so percentages overlap.`
+    : 'No evaluated sample/locus entries. Both prediction results and matching truth data are needed.';
 }}
 
 function sampleMeta(sample) {{
   const bits = [];
   if (sample.demultiplexed_reads !== undefined) bits.push(`demultiplexed: ${{formatNumber(sample.demultiplexed_reads)}}`);
   if (sample.nsequences !== undefined) bits.push(`genotyped: ${{formatNumber(sample.nsequences)}}`);
+  if (sample.predictions !== undefined) bits.push(`predictions: ${{formatNumber(sample.predictions.length)}}`);
   return bits.join(' · ');
 }}
 
@@ -433,6 +653,7 @@ function renderSampleInfo(sample) {{
   document.getElementById('cardDemultiplexed').textContent = formatNumber(sample.demultiplexed_reads);
   document.getElementById('cardGenotyped').textContent = formatNumber(sample.nsequences);
   document.getElementById('cardPeak').textContent = peakBin(sample);
+  document.getElementById('cardPredictions').textContent = sample.predictions ? formatNumber(sample.predictions.length) : '-';
   document.getElementById('sampleSubtitle').textContent = sampleMeta(sample) || 'Sample selected';
 
   const info = [
@@ -440,6 +661,7 @@ function renderSampleInfo(sample) {{
     ['Demultiplexed reads', formatNumber(sample.demultiplexed_reads)],
     ['Genotyped reads', formatNumber(sample.nsequences)],
     ['Peak repeat bin', peakBin(sample)],
+    ['Predicted alleles', sample.predictions ? formatNumber(sample.predictions.length) : '-'],
   ];
   SAMPLE_INFO.innerHTML = info.map(([key, value]) => `<div class="kv-key">${{key}}</div><div>${{value}}</div>`).join('');
 }}
@@ -460,6 +682,81 @@ function renderTable(sample) {{
     </div>`;
 }}
 
+function formatProbability(value) {{
+  if (value === null || value === undefined) return '-';
+  return Number(value).toFixed(3);
+}}
+
+function escapeHtml(value) {{
+  const element = document.createElement('span');
+  element.textContent = String(value);
+  return element.innerHTML;
+}}
+
+function renderAlleleLegend(sample) {{
+  const legend = document.getElementById('alleleLegend');
+  legend.hidden = !REPORT_DATA.inputs.predictions_file && !REPORT_DATA.inputs.true_alleles_file;
+  const items = [['other', 'Other bins (blue)']];
+  if (sample.allele_overlap) {{
+    items.push(['correct', 'Called and known true (green)'],
+               ['incorrect', 'Called but not known true (orange)'],
+               ['missed', 'Known true but not called (red)']);
+  }} else {{
+    if (REPORT_DATA.inputs.predictions_file) items.push(['called', 'Called; truth unavailable (orange)']);
+    if (sample.true_alleles !== undefined) items.push(['known', 'Known true; calls not supplied (red)']);
+  }}
+  legend.innerHTML = items.map(([status, label]) => `<span class="legend-item"><span class="swatch ${{status}}"></span>${{label}}</span>`).join('');
+}}
+
+function renderPredictions(sample) {{
+  const overlap = document.getElementById('alleleOverlap');
+  overlap.hidden = !REPORT_DATA.inputs.true_alleles_file;
+  if (sample.allele_overlap) {{
+    const values = sample.allele_overlap;
+    const percent = value => value === null ? '-' : `${{(100 * value).toFixed(1)}}%`;
+    overlap.textContent = `Correct: ${{values.correct}} · Incorrect: ${{values.incorrect}} · Missed: ${{values.missed}} · Precision: ${{percent(values.precision)}} · Recall: ${{percent(values.recall)}}`;
+  }} else {{
+    overlap.textContent = sample.true_alleles === undefined
+      ? 'Not evaluated: no truth data for this sample/locus.'
+      : 'Not evaluated: no prediction file supplied.';
+  }}
+  const alleles = sample.allele_comparison || [];
+  if (alleles.length === 0) {{
+    PREDICTION_CONTAINER.innerHTML = '<div class="empty">No allele calls or known true alleles available for this sample.</div>';
+    return;
+  }}
+  const showTruth = Boolean(REPORT_DATA.inputs.true_alleles_file);
+  const rows = alleles.map(allele => `
+    <tr>
+      <td>${{escapeHtml(allele.locus_id || '-')}}</td>
+      <td><span class="swatch ${{allele.status}}"></span> ${{allele.allele_id}}</td>
+      ${{showTruth ? `<td>${{allele.called ? 'Yes' : 'No'}}</td><td>${{allele.known_true === null ? 'Not evaluated' : allele.known_true ? 'Yes' : 'No'}}</td>` : ''}}
+      <td>${{formatProbability(allele.probability)}}</td>
+      <td>${{allele.rank ?? '-'}}</td>
+    </tr>`).join('');
+  PREDICTION_CONTAINER.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Locus</th><th>Allele</th>${{showTruth ? '<th>Called</th><th>Known true</th>' : ''}}<th>Probability</th><th>Rank</th></tr></thead>
+        <tbody>${{rows}}</tbody>
+      </table>
+    </div>`;
+}}
+
+function calledAlleleMap(sample) {{
+  const called = new Map();
+  if (!sample.predictions) return called;
+  for (const prediction of sample.predictions) {{
+    const allele = String(prediction.allele_id ?? '').replace(/x$/, '');
+    if (!allele) continue;
+    const probability = prediction.probability;
+    if (!called.has(allele) || probability > called.get(allele)) {{
+      called.set(allele, probability);
+    }}
+  }}
+  return called;
+}}
+
 function renderChart(sample) {{
   if (!sample.repeat_bins || !sample.repeat_counts) {{
     CHART.innerHTML = '<div class="empty">No genotype count table available for this sample.</div>';
@@ -469,6 +766,9 @@ function renderChart(sample) {{
   const distribution = fullDistribution(sample);
   const bins = distribution.bins;
   const counts = distribution.counts;
+  const called = calledAlleleMap(sample);
+  const comparison = new Map((sample.allele_comparison || []).map(allele => [String(allele.allele_id), allele]));
+  const statusLabels = {{ correct: 'called and known true', incorrect: 'called but not known true', missed: 'known true but not called', known: 'known true; calls not supplied', called: 'called; truth not evaluated' }};
   const width = CHART.clientWidth || 800;
   const height = 340;
   const margin = {{ top: 18, right: 18, bottom: 58, left: 56 }};
@@ -493,9 +793,19 @@ function renderChart(sample) {{
 
   for (let i = 0; i < bins.length; i += 1) {{
     const x = margin.left + i * barWidth + 1;
-    const barHeight = innerHeight * counts[i] / maxCount;
+    const allele = String(bins[i]).replace(/x$/, '');
+    const entry = comparison.get(allele);
+    // Keep a small marker visible for known/called alleles with zero supporting reads.
+    const barHeight = Math.max(innerHeight * counts[i] / maxCount, entry ? 3 : 0);
     const y = margin.top + innerHeight - barHeight;
-    svg += `<rect class="bar" x="${{x}}" y="${{y}}" width="${{Math.max(barWidth - 2, 1)}}" height="${{barHeight}}"><title>${{bins[i]}}: ${{counts[i]}} reads</title></rect>`;
+    const isCalled = called.has(allele);
+    const probability = called.get(allele);
+    const className = (isCalled ? 'bar called' : 'bar') + (entry && entry.status !== 'called' ? ` ${{entry.status}}` : '');
+    let title = isCalled
+      ? `${{bins[i]}}: ${{counts[i]}} reads · called allele probability ${{formatProbability(probability)}}`
+      : `${{bins[i]}}: ${{counts[i]}} reads`;
+    if (entry) title += ` · ${{statusLabels[entry.status]}}`;
+    svg += `<rect class="${{className}}" x="${{x}}" y="${{y}}" width="${{Math.max(barWidth - 2, 1)}}" height="${{barHeight}}"><title>${{escapeHtml(title)}}</title></rect>`;
     if (i % step === 0 || i === bins.length - 1) {{
       const tx = margin.left + i * barWidth + barWidth / 2;
       svg += `<text x="${{tx}}" y="${{height - 18}}" text-anchor="middle">${{bins[i]}}</text>`;
@@ -514,6 +824,8 @@ function selectSample(name) {{
   renderSampleList(SEARCH.value);
   renderSampleInfo(currentSample);
   renderTable(currentSample);
+  renderPredictions(currentSample);
+  renderAlleleLegend(currentSample);
   renderChart(currentSample);
 }}
 
@@ -533,11 +845,16 @@ if (REPORT_DATA.samples.length > 0) {{
 
 def main(args):
     """Main entry point for report generation."""
-    if not args.demultiplexed and not args.genotypes:
-        print("Please provide at least one input with -d/--demultiplexed or -g/--genotypes", file=sys.stderr)
+    predictions = getattr(args, "predictions", None)
+    if not args.demultiplexed and not args.genotypes and not predictions:
+        print("Please provide at least one input with -d/--demultiplexed, -g/--genotypes, or -p/--predictions", file=sys.stderr)
         return 1
 
-    samples = build_samples(args.demultiplexed, args.genotypes)
+    try:
+        samples = build_samples(args.demultiplexed, args.genotypes, predictions, getattr(args, "true_alleles", None))
+    except (ValueError, OSError) as error:
+        print(error, file=sys.stderr)
+        return 1
     if not samples:
         print("No report data found in the provided inputs", file=sys.stderr)
         return 1
@@ -556,5 +873,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Generate a single-file HTML report")
     parser.add_argument("-d", "--demultiplexed", default=None, help="Directory with demultiplexed FASTA files")
     parser.add_argument("-g", "--genotypes", default=None, help="genotypes.tsv file")
+    parser.add_argument("-p", "--predictions", default=None, help="Selected allele calls table")
+    parser.add_argument("--true-alleles", default=None, help="Known allele table in the same format used for training")
     parser.add_argument("-o", "--outfile", default="ontyper-report.html", help="Output HTML file")
     sys.exit(main(parser.parse_args()))
