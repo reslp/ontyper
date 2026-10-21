@@ -78,32 +78,28 @@ ontyper genotypes visualize -g genotypes.tsv -l TTMock01_Tth445
 ### Build an interactive HTML report
 
 ```bash
-ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv -o report.html
+ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv --true-alleles true_alleles.csv -o report.html
 ```
+
+`--true-alleles` is optional and accepts the same file used for training. The report shows calls, truth, ranks, probabilities, and per-sample/locus precision and recall. Its legend uses **green** for correct calls, **orange** for calls absent from truth, **red** for missed true alleles, and **blue** for other bins. Samples without truth data are not evaluated. Without a truth file, calls remain orange. Supply selected calls from `predict -o`, not the full candidate scores.
 
 **These features are currently in development and not yet available in the online version:**
 
 ### Build allele prediction features
 
 ```bash
-ontyper genotypes features \
-  --genotypes genotypes.tsv \
-  --mapping sample_locus_mapping.csv \
-  --true-alleles true_alleles.csv \
-  -o training-features.csv
+ontyper genotypes features --genotypes genotypes.tsv --mapping sample_locus_mapping.csv -o features.csv
 ```
 
-Omit `--true-alleles` to create prediction-only feature tables.
+Feature tables are unlabeled and reusable for both training and prediction.
 
 ### Train an allele prediction model
 
 ```bash
-ontyper genotypes train \
-  --features training-features.csv \
-  --model HistGradientBoostingClassifier \
-  --modelfile allele-model.joblib \
-  --group sample_id
+ontyper genotypes train --features features.csv --true-alleles true_alleles.csv --model HistGradientBoostingClassifier --modelfile allele-model.joblib --group sample_id
 ```
+
+Training joins true alleles by `sample_id` and `locus_id` to create labels internally. The true-allele file contains those two columns plus numeric repeat counts in columns such as `Allele 1`, `Allele 2`, etc. Its delimiter is auto-detected, or can be set with `--true-delimiter`. Legacy feature tables already containing a `label` column can still be used without `--true-alleles`.
 
 ### Predict alleles with a trained model
 
