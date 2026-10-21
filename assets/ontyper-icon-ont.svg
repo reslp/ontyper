@@ -35,10 +35,10 @@
             <path d="M213,142.158L213,185.842C213,196.967 203.967,206 192.842,206L63.158,206C52.033,206 43,196.967 43,185.842L43,142.158C43,131.033 52.033,122 63.158,122L192.842,122C203.967,122 213,131.033 213,142.158Z" style="fill:white;fill-opacity:0.96;"/>
         </g>
         <g transform="matrix(1.19058,0,0,1.19058,126.89,190.63)">
-            <text x="-63.828px" y="0px" style="font-family:'Helvetica-Bold', 'Helvetica';font-weight:700;font-size:72px;fill:rgb(15,23,42);">O<tspan x="-9.984px 39.852px " y="0px 0px ">Nt</tspan></text>
+            <text x="-53.809px" y="0px" style="font-family:'Helvetica-Bold', 'Helvetica';font-weight:700;font-size:72px;fill:rgb(15,23,42);">o<tspan x="-11.988px 29.832px " y="0px 0px ">nt</tspan></text>
         </g>
     </g>
-    <g transform="matrix(1.19058,0,0,1.19058,-67.5304,52.7523)">
+    <g transform="matrix(1.19058,0,0,1.19058,-63.6174,60.2744)">
         <circle cx="128" cy="90" r="6" style="fill:rgb(255,113,0);fill-opacity:0.9;"/>
     </g>
 </svg>
