@@ -562,7 +562,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--infile", required=True)
     parser.add_argument("-d", "--demfile", required=True)
     parser.add_argument("-t", "--threads", type=int, default=1)
-    parser.add_argument("-m", "--mode", default="single", choices=["single", "dual"])
+    parser.add_argument("-m", "--mode", default="single", choices=["single", "dual"], help="Demultiplex mode. Choices: single(default), dual. Single searches for tag+primer together, dual searches for primer first and then seperately for tag. Dual allows fine grained specification of nucleotide mismatches using --primer-mismatches and --tag-mismatches.")
     parser.add_argument("-o", "--outdir", default="")
     parser.add_argument("-c", "--cutoff", default="")
     parser.add_argument("--window", type=int, default=150)
