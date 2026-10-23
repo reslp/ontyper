@@ -46,5 +46,8 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/ontyper"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"assets/ontyper-icon-ont.png" = "ontyper/assets/ontyper-icon-ont.png"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
