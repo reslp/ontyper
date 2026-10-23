@@ -3,11 +3,13 @@
 ontyper.report - Generate a single-file HTML summary report
 """
 
+import base64
 import csv
 import html
 import json
 import os
 import sys
+from pathlib import Path
 
 from ontyper import FASTA_SUFFIXES
 from ontyper.genotypes.features import read_true_alleles
@@ -283,6 +285,14 @@ def build_summary(samples):
     }
 
 
+def report_logo_data_uri():
+    """Embed the packaged logo, with a source-tree fallback for editable installs."""
+    logo = Path(__file__).parent / "assets" / "ontyper-icon-ont.png"
+    if not logo.is_file():
+        logo = Path(__file__).resolve().parents[2] / "assets" / "ontyper-icon-ont.png"
+    return "data:image/png;base64," + base64.b64encode(logo.read_bytes()).decode("ascii")
+
+
 def render_html(samples, args):
     """Render the full single-file HTML report."""
     data = {
@@ -298,6 +308,7 @@ def render_html(samples, args):
     }
     data_json = json.dumps(data).replace("</", "<\\/")
     title_html = html.escape(REPORT_TITLE)
+    logo_uri = report_logo_data_uri()
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -326,21 +337,31 @@ body {{
   color: var(--text);
 }}
 .header {{
-  padding: 28px 32px 20px;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255,255,255,0.85);
-  backdrop-filter: blur(10px);
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px 24px;
+  background: var(--panel);
 }}
-.header h1 {{ margin: 0 0 8px; font-size: 28px; }}
-.header p {{ margin: 0; color: var(--muted); }}
+.report-logo {{ width: 48px; height: 48px; flex-shrink: 0; }}
+.header h1 {{ margin: 0 0 3px; font-size: 24px; }}
+.header p {{ margin: 0; color: var(--muted); font-size: 12px; }}
+.report-overview {{ padding: 0 24px 12px; background: var(--panel); border-bottom: 1px solid var(--line); }}
+.report-overview h2 {{ margin: 0 0 8px; color: var(--muted); font-size: 12px; font-weight: 600; }}
+.overview-details {{ margin-top: 10px; font-size: 12px; }}
+.overview-details summary, .sample-details summary {{ cursor: pointer; color: var(--muted); }}
+.overview-details .kv {{ margin-top: 10px; gap: 5px 16px; overflow-wrap: anywhere; }}
+.sample-details .kv {{ margin-top: 14px; }}
+#histogramPanel {{ scroll-margin-top: 16px; }}
+#histogramPanel h2 {{ margin: 3px 0 5px; font-size: 20px; overflow-wrap: anywhere; }}
+.eyebrow {{ font-size: 12px; color: var(--muted); }}
+.sample-metrics {{ display: flex; flex-wrap: wrap; gap: 6px 20px; margin-bottom: 14px; color: var(--muted); font-size: 12px; }}
+.sample-metrics strong {{ color: var(--text); font-size: 14px; }}
 .layout {{
   display: grid;
-  grid-template-columns: 320px minmax(0, 1fr);
-  gap: 24px;
-  padding: 24px;
+  grid-template-columns: 280px minmax(0, 1fr);
+  gap: 18px;
+  padding: 18px 24px;
 }}
 .sidebar {{
   background: var(--panel);
@@ -350,7 +371,7 @@ body {{
   overflow: hidden;
   align-self: start;
   position: sticky;
-  top: 120px;
+  top: 16px;
 }}
 .sidebar-section {{ padding: 20px; border-bottom: 1px solid var(--line); }}
 .sidebar h2, .content h2 {{ margin: 0 0 14px; font-size: 17px; }}
@@ -362,7 +383,7 @@ body {{
   background: var(--panel-2);
   font: inherit;
 }}
-.sample-list {{ max-height: calc(100vh - 280px); overflow: auto; padding: 10px; }}
+.sample-list {{ max-height: calc(100vh - 180px); overflow: auto; padding: 10px; }}
 .sample-button {{
   width: 100%;
   border: 0;
@@ -378,17 +399,7 @@ body {{
 .sample-button.active {{ background: var(--accent-soft); color: var(--accent); }}
 .sample-name {{ display: block; font-weight: 600; margin-bottom: 4px; }}
 .sample-meta {{ color: var(--muted); font-size: 12px; }}
-.content {{ display: grid; gap: 20px; }}
-.cards {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }}
-.card {{
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 18px 20px;
-  box-shadow: var(--shadow);
-}}
-.card-label {{ color: var(--muted); font-size: 13px; margin-bottom: 8px; }}
-.card-value {{ font-size: 28px; font-weight: 700; }}
+.content {{ display: grid; align-content: start; gap: 16px; min-width: 0; }}
 .panel {{
   background: var(--panel);
   border: 1px solid var(--line);
@@ -398,12 +409,12 @@ body {{
 }}
 .panel-header {{ display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin-bottom: 16px; }}
 .panel-subtitle {{ color: var(--muted); font-size: 14px; }}
-.summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }}
-.mini-stat {{ background: var(--panel-2); border-radius: 14px; padding: 16px; }}
-.mini-stat strong {{ display: block; font-size: 22px; margin-bottom: 6px; }}
-.truth-grid {{ grid-template-columns: repeat(3, minmax(0, 1fr)); }}
-#truthStatistics {{ margin-top: 18px; }}
-#truthStatistics p {{ color: var(--muted); font-size: 13px; }}
+.summary-grid {{ display: flex; flex-wrap: wrap; gap: 8px 24px; }}
+.mini-stat {{ display: flex; align-items: baseline; gap: 6px; font-size: 12px; }}
+.mini-stat strong {{ font-size: 16px; }}
+.truth-grid .mini-stat {{ flex: 1; min-width: 180px; flex-direction: column; gap: 2px; }}
+#truthStatistics {{ margin-top: 12px; }}
+#truthStatisticsNote {{ color: var(--muted); font-size: 12px; }}
 .stat-green strong {{ color: #16a34a; }}
 .stat-red strong {{ color: #dc2626; }}
 .kv {{ display: grid; grid-template-columns: 220px 1fr; gap: 10px 16px; }}
@@ -435,24 +446,56 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
 .axis, .grid {{ stroke: #cbd5e1; stroke-width: 1; }}
 .grid {{ stroke-dasharray: 3 4; }}
 .footer {{ color: var(--muted); font-size: 13px; text-align: right; }}
-@media (max-width: 1100px) {{
-  .layout {{ grid-template-columns: 1fr; }}
-  .sidebar {{ position: static; }}
-  .cards, .summary-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+@media (max-width: 1000px) {{
+  .layout {{ grid-template-columns: 220px minmax(0, 1fr); }}
 }}
 @media (max-width: 700px) {{
-  .header {{ padding: 22px 18px 18px; }}
-  .layout {{ padding: 18px; }}
-  .cards, .summary-grid {{ grid-template-columns: 1fr; }}
+  .header {{ padding: 12px; }}
+  .report-overview {{ padding: 0 12px 12px; }}
+  .layout {{ grid-template-columns: 1fr; padding: 12px; }}
+  .sidebar {{ position: static; }}
+  .sample-list {{ max-height: 200px; }}
+  .panel {{ padding: 16px; }}
   .kv {{ grid-template-columns: 1fr; }}
 }}
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>{title_html}</h1>
-  <p>Interactive summary of demultiplexing and genotype identification results. Allele predictions are included when provided.</p>
-</div>
+<header class="header">
+  <img class="report-logo" src="{logo_uri}" alt="ontyper logo" width="48" height="48">
+  <div>
+    <h1>{title_html}</h1>
+    <p>Interactive summary of demultiplexing and genotype identification results. Allele predictions are included when provided.</p>
+  </div>
+</header>
+<section class="report-overview" aria-labelledby="overviewTitle">
+  <h2 id="overviewTitle">Report overview</h2>
+  <div class="summary-grid">
+    <div class="mini-stat"><strong id="summarySamples"></strong><span>Samples in report</span></div>
+    <div class="mini-stat"><strong id="summaryDemux"></strong><span>Samples with demultiplexed reads</span></div>
+    <div class="mini-stat"><strong id="summaryGenotypes"></strong><span>Samples with genotype table entries</span></div>
+    <div class="mini-stat"><strong id="summaryReads"></strong><span>Total genotyped reads</span></div>
+    <div class="mini-stat"><strong id="summaryPredictions"></strong><span>Predicted allele rows</span></div>
+  </div>
+  <div id="truthStatistics" hidden>
+    <h2>Allele call accuracy</h2>
+    <div class="summary-grid truth-grid">
+      <div class="mini-stat stat-green"><strong id="summaryExactMatches"></strong><span>Exact matches: all true alleles called, no extra calls (all green)</span></div>
+      <div class="mini-stat stat-red"><strong id="summaryMissedTrue"></strong><span>Entries with uncalled true alleles</span></div>
+      <div class="mini-stat stat-red"><strong id="summaryNoTrueCalled"></strong><span>Entries with no known true allele called</span></div>
+    </div>
+  </div>
+  <details class="overview-details">
+    <summary>Input files and evaluation details</summary>
+    <div class="kv">
+      <div class="kv-key">Demultiplexed directory</div><div id="inputDemultiplexed"></div>
+      <div class="kv-key">Genotype table</div><div id="inputGenotypes"></div>
+      <div class="kv-key">Prediction table</div><div id="inputPredictions"></div>
+      <div class="kv-key">True allele table</div><div id="inputTrueAlleles"></div>
+    </div>
+    <p id="truthStatisticsNote" hidden></p>
+  </details>
+</section>
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-section">
@@ -462,54 +505,22 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
     <div id="sampleList" class="sample-list"></div>
   </aside>
   <main class="content">
-    <section class="panel">
+    <section id="histogramPanel" class="panel">
       <div class="panel-header">
         <div>
-          <h2>Report overview</h2>
-          <div class="panel-subtitle">Input files and overall counts</div>
-        </div>
-      </div>
-      <div class="summary-grid">
-        <div class="mini-stat"><strong id="summarySamples"></strong><span>Samples in report</span></div>
-        <div class="mini-stat"><strong id="summaryDemux"></strong><span>Samples with demultiplexed reads</span></div>
-        <div class="mini-stat"><strong id="summaryGenotypes"></strong><span>Samples with genotype table entries</span></div>
-        <div class="mini-stat"><strong id="summaryReads"></strong><span>Total genotyped reads</span></div>
-        <div class="mini-stat"><strong id="summaryPredictions"></strong><span>Predicted allele rows</span></div>
-      </div>
-      <div id="truthStatistics" hidden>
-        <h2>Allele call accuracy</h2>
-        <div class="summary-grid truth-grid">
-          <div class="mini-stat stat-green"><strong id="summaryExactMatches"></strong><span>Exact matches: all true alleles called, no extra calls (all green)</span></div>
-          <div class="mini-stat stat-red"><strong id="summaryMissedTrue"></strong><span>Entries with uncalled true alleles</span></div>
-          <div class="mini-stat stat-red"><strong id="summaryNoTrueCalled"></strong><span>Entries with no known true allele called</span></div>
-        </div>
-        <p id="truthStatisticsNote"></p>
-      </div>
-      <div style="height: 18px"></div>
-      <div class="kv">
-        <div class="kv-key">Demultiplexed directory</div><div id="inputDemultiplexed"></div>
-        <div class="kv-key">Genotype table</div><div id="inputGenotypes"></div>
-        <div class="kv-key">Prediction table</div><div id="inputPredictions"></div>
-        <div class="kv-key">True allele table</div><div id="inputTrueAlleles"></div>
-      </div>
-    </section>
-
-    <section class="cards">
-      <div class="card"><div class="card-label">Selected sample</div><div id="cardSample" class="card-value">-</div></div>
-      <div class="card"><div class="card-label">Demultiplexed reads</div><div id="cardDemultiplexed" class="card-value">-</div></div>
-      <div class="card"><div class="card-label">Genotyped reads</div><div id="cardGenotyped" class="card-value">-</div></div>
-      <div class="card"><div class="card-label">Peak repeat bin</div><div id="cardPeak" class="card-value">-</div></div>
-      <div class="card"><div class="card-label">Predicted alleles</div><div id="cardPredictions" class="card-value">-</div></div>
-    </section>
-
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Sample details</h2>
+          <div class="eyebrow">Repeat count histogram</div>
+          <h2 id="cardSample">Selected sample</h2>
           <div id="sampleSubtitle" class="panel-subtitle">Select a sample to inspect its repeat-count distribution.</div>
         </div>
       </div>
-      <div id="sampleInfo" class="kv"></div>
+      <div class="sample-metrics">
+        <span>Demultiplexed reads <strong id="cardDemultiplexed">-</strong></span>
+        <span>Genotyped reads <strong id="cardGenotyped">-</strong></span>
+        <span>Peak repeat bin <strong id="cardPeak">-</strong></span>
+        <span>Predicted alleles <strong id="cardPredictions">-</strong></span>
+      </div>
+      <div id="alleleLegend" class="allele-legend" aria-label="Allele color legend" hidden></div>
+      <div id="chart"></div>
     </section>
 
     <section class="panel">
@@ -523,16 +534,10 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
       <div id="predictionContainer"></div>
     </section>
 
-    <section class="panel">
-      <div class="panel-header">
-        <div>
-          <h2>Repeat count histogram</h2>
-          <div class="panel-subtitle">Distribution of reads across repeat motif counts</div>
-        </div>
-      </div>
-      <div id="alleleLegend" class="allele-legend" aria-label="Allele color legend" hidden></div>
-      <div id="chart"></div>
-    </section>
+    <details class="panel sample-details">
+      <summary>Sample details</summary>
+      <div id="sampleInfo" class="kv"></div>
+    </details>
 
     <section class="panel">
       <div class="panel-header">
@@ -610,6 +615,7 @@ function renderSummary() {{
   document.getElementById('inputPredictions').textContent = REPORT_DATA.inputs.predictions_file || '-';
   document.getElementById('inputTrueAlleles').textContent = REPORT_DATA.inputs.true_alleles_file || '-';
   document.getElementById('truthStatistics').hidden = !REPORT_DATA.inputs.true_alleles_file;
+  document.getElementById('truthStatisticsNote').hidden = !REPORT_DATA.inputs.true_alleles_file;
   const stats = REPORT_DATA.summary.truth_statistics;
   for (const [id, key] of [['summaryExactMatches', 'exact_matches'], ['summaryMissedTrue', 'with_missed_true_alleles'], ['summaryNoTrueCalled', 'with_no_true_allele_called']]) {{
     const value = stats[key];
@@ -639,7 +645,7 @@ function renderSampleList(filterText = '') {{
     const button = document.createElement('button');
     button.className = 'sample-button' + (currentSample && currentSample.name === sample.name ? ' active' : '');
     button.innerHTML = `<span class="sample-name">${{sample.name}}</span><span class="sample-meta">${{sampleMeta(sample)}}</span>`;
-    button.addEventListener('click', () => selectSample(sample.name));
+    button.addEventListener('click', () => selectSample(sample.name, true));
     SAMPLE_LIST.appendChild(button);
   }}
 
@@ -818,7 +824,7 @@ function renderChart(sample) {{
   CHART.innerHTML = svg;
 }}
 
-function selectSample(name) {{
+function selectSample(name, revealChart = false) {{
   currentSample = REPORT_DATA.samples.find(sample => sample.name === name) || null;
   if (!currentSample) return;
   renderSampleList(SEARCH.value);
@@ -827,6 +833,7 @@ function selectSample(name) {{
   renderPredictions(currentSample);
   renderAlleleLegend(currentSample);
   renderChart(currentSample);
+  if (revealChart) document.getElementById('histogramPanel').scrollIntoView({{ block: 'start', behavior: 'auto' }});
 }}
 
 SEARCH.addEventListener('input', () => renderSampleList(SEARCH.value));
