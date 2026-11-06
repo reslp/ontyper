@@ -140,7 +140,11 @@ def read_prediction_table(path):
             if not sample_name:
                 continue
             if sample_name not in samples:
-                samples[sample_name] = {"predictions": []}
+                samples[sample_name] = {
+                    "predictions": [],
+                    "sample_id": (row.get("sample_id") or "").strip(),
+                    "locus_id": (row.get("locus_id") or "").strip(),
+                }
             samples[sample_name]["predictions"].append(parse_prediction_row(row))
 
     for values in samples.values():
@@ -231,6 +235,10 @@ def build_samples(demultiplexed_dir, genotype_file, prediction_file=None, true_a
     for sample_name in sorted(merged):
         entry = {"name": sample_name}
         entry.update(merged[sample_name])
+        # Prefer explicit identities; count-only names follow the sample_locus convention.
+        parts = sample_name.rsplit("_", 1)
+        entry["sample_id"] = entry.get("sample_id") or parts[0]
+        entry["locus_id"] = entry.get("locus_id") or (parts[1] if len(parts) == 2 else "")
         entry["allele_comparison"], entry["allele_overlap"] = compare_alleles(entry, bool(prediction_file))
         if "demultiplexed_reads" not in entry and "nsequences" in entry:
             entry["demultiplexed_reads"] = entry["nsequences"]
@@ -368,7 +376,8 @@ body {{
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: auto;
+  max-height: calc(100vh - 32px);
   align-self: start;
   position: sticky;
   top: 16px;
@@ -383,7 +392,19 @@ body {{
   background: var(--panel-2);
   font: inherit;
 }}
-.sample-list {{ max-height: calc(100vh - 180px); overflow: auto; padding: 10px; }}
+.sample-list {{ max-height: calc(100vh - 420px); min-height: 120px; overflow: auto; padding: 10px; }}
+.filter-label {{ display: block; font-size: 12px; margin-bottom: 6px; }}
+.read-filter {{ display: flex; align-items: center; gap: 8px; }}
+.read-filter input[type="range"] {{ flex: 1; min-width: 0; accent-color: var(--accent); }}
+.read-filter input[type="number"] {{ width: 80px; padding: 5px; border: 1px solid var(--line); border-radius: 6px; }}
+.filter-options {{ margin-top: 12px; font-size: 12px; }}
+.filter-options summary {{ cursor: pointer; color: var(--accent); }}
+.filter-options label {{ display: block; margin-top: 12px; }}
+.filter-options select {{ display: block; width: 100%; margin-top: 5px; border: 1px solid var(--line); border-radius: 6px; font: inherit; }}
+.filter-note {{ color: var(--muted); font-size: 12px; line-height: 1.5; }}
+#resetFilters {{ margin-top: 10px; padding: 6px 10px; background: var(--panel-2); color: var(--accent); border: 1px solid var(--line); border-radius: 8px; cursor: pointer; }}
+#filterStatus {{ margin-bottom: 0; }}
+#dataCoverage {{ margin: 8px 0 0; }}
 .sample-button {{
   width: 100%;
   border: 0;
@@ -453,7 +474,7 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
   .header {{ padding: 12px; }}
   .report-overview {{ padding: 0 12px 12px; }}
   .layout {{ grid-template-columns: 1fr; padding: 12px; }}
-  .sidebar {{ position: static; }}
+  .sidebar {{ position: static; max-height: none; }}
   .sample-list {{ max-height: 200px; }}
   .panel {{ padding: 16px; }}
   .kv {{ grid-template-columns: 1fr; }}
@@ -471,7 +492,7 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
 <section class="report-overview" aria-labelledby="overviewTitle">
   <h2 id="overviewTitle">Report overview</h2>
   <div class="summary-grid">
-    <div class="mini-stat"><strong id="summarySamples"></strong><span>Samples in report</span></div>
+    <div class="mini-stat"><strong id="summarySamples"></strong><span>Visible sample/locus entries</span></div>
     <div class="mini-stat"><strong id="summaryDemux"></strong><span>Samples with demultiplexed reads</span></div>
     <div class="mini-stat"><strong id="summaryGenotypes"></strong><span>Samples with genotype table entries</span></div>
     <div class="mini-stat"><strong id="summaryReads"></strong><span>Total genotyped reads</span></div>
@@ -485,6 +506,7 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
       <div class="mini-stat stat-red"><strong id="summaryNoTrueCalled"></strong><span>Entries with no known true allele called</span></div>
     </div>
   </div>
+  <p id="dataCoverage" class="filter-note" aria-live="polite"></p>
   <details class="overview-details">
     <summary>Input files and evaluation details</summary>
     <div class="kv">
@@ -499,8 +521,32 @@ svg text {{ fill: #334155; font-size: 11px; font-family: inherit; }}
 <div class="layout">
   <aside class="sidebar">
     <div class="sidebar-section">
+      <h2>Filter data</h2>
+      <label class="filter-label" for="minReads">Minimum total reads: <strong id="minReadsLabel">0</strong></label>
+      <div class="read-filter">
+        <input id="minReads" type="range" min="0" max="0" step="1" value="0">
+        <input id="minReadsNumber" type="number" min="0" step="1" value="0" aria-label="Minimum total reads">
+      </div>
+      <details class="filter-options">
+        <summary>Samples, loci and input availability</summary>
+        <label for="sampleFilter">Samples</label>
+        <select id="sampleFilter" multiple size="4" aria-label="Include samples"></select>
+        <label for="locusFilter">Loci</label>
+        <select id="locusFilter" multiple size="4" aria-label="Include loci"></select>
+        <p class="filter-note">No selection includes all IDs. Use Cmd/Ctrl to select multiple IDs.</p>
+        <label><input id="requireCounts" type="checkbox"> Has read-count data</label>
+        <label><input id="requirePredictions" type="checkbox"> Has prediction rows</label>
+        <label><input id="requireTruth" type="checkbox"> Has known true alleles</label>
+        <p class="filter-note">Read totals use genotype counts, or demultiplexed counts when unavailable. Entries without totals are excluded above 0 reads.</p>
+        <p class="filter-note">Missing prediction rows can mean zero calls or unmatched IDs. Requiring prediction rows can bias accuracy upward.</p>
+        <p class="filter-note">IDs come from predictions/truth; count-only names are split at the final underscore.</p>
+      </details>
+      <button id="resetFilters" type="button">Reset filters</button>
+      <p id="filterStatus" class="filter-note" aria-live="polite"></p>
+    </div>
+    <div class="sidebar-section">
       <h2>Samples</h2>
-      <input id="search" class="search" type="search" placeholder="Search sample name...">
+      <input id="search" class="search" type="search" placeholder="Filter sample/locus names..." aria-label="Filter sample/locus names">
     </div>
     <div id="sampleList" class="sample-list"></div>
   </aside>
@@ -562,6 +608,8 @@ const TABLE_CONTAINER = document.getElementById('tableContainer');
 const PREDICTION_CONTAINER = document.getElementById('predictionContainer');
 const CHART = document.getElementById('chart');
 let currentSample = null;
+let visibleSamples = [];
+const FILTERS = Object.fromEntries(['minReads', 'minReadsNumber', 'sampleFilter', 'locusFilter', 'requireCounts', 'requirePredictions', 'requireTruth'].map(id => [id, document.getElementById(id)]));
 
 function formatNumber(value) {{
   if (value === null || value === undefined) return '-';
@@ -604,19 +652,148 @@ function peakBin(sample) {{
   return sample.repeat_counts[bestIndex] > 0 ? sample.repeat_bins[bestIndex] : '-';
 }}
 
-function renderSummary() {{
-  document.getElementById('summarySamples').textContent = formatNumber(REPORT_DATA.summary.nsamples);
-  document.getElementById('summaryDemux').textContent = formatNumber(REPORT_DATA.summary.samples_with_demultiplex);
-  document.getElementById('summaryGenotypes').textContent = formatNumber(REPORT_DATA.summary.samples_with_genotypes);
-  document.getElementById('summaryReads').textContent = formatNumber(REPORT_DATA.summary.total_genotyped_reads);
-  document.getElementById('summaryPredictions').textContent = formatNumber(REPORT_DATA.summary.total_predictions);
+function sampleReadCount(sample) {{
+  const count = sample.nsequences ?? sample.demultiplexed_reads;
+  return Number.isFinite(count) ? count : null;
+}}
+
+function filterSamples(samples, filters) {{
+  return samples.filter(sample => {{
+    const reads = sampleReadCount(sample);
+    return (!filters.minReads || (reads !== null && reads >= filters.minReads))
+      && (!filters.sampleIds.length || filters.sampleIds.includes(sample.sample_id || ''))
+      && (!filters.locusIds.length || filters.locusIds.includes(sample.locus_id || ''))
+      && (!filters.requireCounts || reads !== null)
+      && (!filters.requirePredictions || (sample.predictions || []).length > 0)
+      && (!filters.requireTruth || sample.true_alleles !== undefined)
+      && [sample.name, sample.sample_id, sample.locus_id].join(' ').toLowerCase().includes(filters.query);
+  }});
+}}
+
+function summarizeSamples(samples) {{
+  const summary = {{ nsamples: samples.length, samples_with_demultiplex: 0, samples_with_genotypes: 0, samples_with_predictions: 0,
+    total_demultiplexed_reads: 0, total_genotyped_reads: 0, total_predictions: 0 }};
+  for (const sample of samples) {{
+    if (sample.demultiplexed_reads !== undefined) {{
+      summary.samples_with_demultiplex += 1;
+      summary.total_demultiplexed_reads += sample.demultiplexed_reads;
+    }}
+    if (sample.nsequences !== undefined) {{
+      summary.samples_with_genotypes += 1;
+      summary.total_genotyped_reads += sample.nsequences;
+    }}
+    if (sample.predictions !== undefined) {{
+      summary.samples_with_predictions += 1;
+      summary.total_predictions += sample.predictions.length;
+    }}
+  }}
+  const evaluated = samples.filter(sample => sample.allele_overlap != null).map(sample => sample.allele_overlap);
+  const counts = {{
+    exact_matches: evaluated.filter(value => value.correct > 0 && value.incorrect === 0 && value.missed === 0).length,
+    with_missed_true_alleles: evaluated.filter(value => value.missed > 0).length,
+    with_no_true_allele_called: evaluated.filter(value => value.correct === 0).length,
+  }};
+  summary.truth_statistics = {{ evaluated: evaluated.length }};
+  for (const [key, count] of Object.entries(counts)) {{
+    summary.truth_statistics[key] = {{ count, proportion: evaluated.length ? count / evaluated.length : null }};
+  }}
+  return summary;
+}}
+
+function readFilters() {{
+  return {{
+    minReads: Number(FILTERS.minReadsNumber.value) || 0,
+    sampleIds: Array.from(FILTERS.sampleFilter.selectedOptions, option => option.value),
+    locusIds: Array.from(FILTERS.locusFilter.selectedOptions, option => option.value),
+    requireCounts: FILTERS.requireCounts.checked,
+    requirePredictions: FILTERS.requirePredictions.checked,
+    requireTruth: FILTERS.requireTruth.checked,
+    query: SEARCH.value.trim().toLowerCase(),
+  }};
+}}
+
+function clearSelectedSample() {{
+  currentSample = null;
+  document.getElementById('cardSample').textContent = 'No matching entries';
+  for (const id of ['cardDemultiplexed', 'cardGenotyped', 'cardPeak', 'cardPredictions']) document.getElementById(id).textContent = '-';
+  document.getElementById('sampleSubtitle').textContent = 'Adjust or reset the filters to show data.';
+  SAMPLE_INFO.innerHTML = '';
+  for (const element of [CHART, TABLE_CONTAINER, PREDICTION_CONTAINER]) element.innerHTML = '<div class="empty">No entries match the current filters.</div>';
+  document.getElementById('alleleLegend').hidden = true;
+  document.getElementById('alleleOverlap').hidden = true;
+}}
+
+function applyFilters() {{
+  visibleSamples = filterSamples(REPORT_DATA.samples, readFilters());
+  renderSummary();
+  document.getElementById('filterStatus').textContent = `Showing ${{visibleSamples.length}} of ${{REPORT_DATA.samples.length}} sample/locus entries.`;
+  const withCounts = visibleSamples.filter(sample => sampleReadCount(sample) !== null);
+  const withPredictions = visibleSamples.filter(sample => (sample.predictions || []).length > 0);
+  const noPredictionRows = withCounts.filter(sample => !(sample.predictions || []).length).length;
+  const noCounts = withPredictions.filter(sample => sampleReadCount(sample) === null).length;
+  document.getElementById('dataCoverage').textContent = `Current view: ${{withCounts.length}} entries with read counts; ${{withPredictions.length}} with prediction rows; ${{visibleSamples.filter(sample => sample.true_alleles !== undefined).length}} with truth. ${{noPredictionRows}} count entries have no prediction rows (zero calls or unmatched IDs); ${{noCounts}} prediction entries lack counts.`;
+  const selected = visibleSamples.find(sample => currentSample && sample.name === currentSample.name) || visibleSamples[0];
+  if (selected) selectSample(selected.name);
+  else {{ clearSelectedSample(); renderSampleList(); }}
+}}
+
+function setMinimumReads(value) {{
+  const minimum = Math.max(0, Math.floor(Number(value) || 0));
+  FILTERS.minReadsNumber.value = String(minimum);
+  FILTERS.minReads.value = String(Math.min(minimum, Number(FILTERS.minReads.max)));
+  document.getElementById('minReadsLabel').textContent = formatNumber(minimum);
+  applyFilters();
+}}
+
+function resetFilters() {{
+  SEARCH.value = '';
+  for (const select of [FILTERS.sampleFilter, FILTERS.locusFilter]) {{
+    for (const option of select.options) option.selected = false;
+  }}
+  FILTERS.requireCounts.checked = REPORT_DATA.samples.some(sample => sampleReadCount(sample) !== null);
+  FILTERS.requirePredictions.checked = false;
+  FILTERS.requireTruth.checked = false;
+  setMinimumReads(0);
+}}
+
+function initializeFilters() {{
+  for (const [select, key] of [[FILTERS.sampleFilter, 'sample_id'], [FILTERS.locusFilter, 'locus_id']]) {{
+    const ids = Array.from(new Set(REPORT_DATA.samples.map(sample => sample[key] || ''))).sort((a, b) => a.localeCompare(b, undefined, {{ numeric: true }}));
+    for (const id of ids) {{
+      const option = document.createElement('option');
+      option.value = id;
+      option.textContent = id || '(Unknown)';
+      select.appendChild(option);
+    }}
+    select.addEventListener('change', applyFilters);
+  }}
+  const counts = REPORT_DATA.samples.map(sampleReadCount).filter(count => count !== null);
+  FILTERS.minReads.max = String(counts.reduce((maximum, count) => Math.max(maximum, count), 0));
+  FILTERS.minReads.disabled = FILTERS.minReadsNumber.disabled = FILTERS.requireCounts.disabled = counts.length === 0;
+  FILTERS.requirePredictions.disabled = !REPORT_DATA.inputs.predictions_file;
+  FILTERS.requireTruth.disabled = !REPORT_DATA.inputs.true_alleles_file;
+  FILTERS.minReads.addEventListener('input', () => setMinimumReads(FILTERS.minReads.value));
+  FILTERS.minReadsNumber.addEventListener('input', () => setMinimumReads(FILTERS.minReadsNumber.value));
+  for (const input of [FILTERS.requireCounts, FILTERS.requirePredictions, FILTERS.requireTruth]) input.addEventListener('change', applyFilters);
+  document.getElementById('resetFilters').addEventListener('click', resetFilters);
+  SEARCH.addEventListener('input', applyFilters);
+  resetFilters();
+}}
+
+function renderSummary(samples = visibleSamples) {{
+  const summary = summarizeSamples(samples);
+  document.getElementById('summarySamples').textContent = formatNumber(summary.nsamples);
+  document.getElementById('summaryDemux').textContent = formatNumber(summary.samples_with_demultiplex);
+  document.getElementById('summaryGenotypes').textContent = formatNumber(summary.samples_with_genotypes);
+  document.getElementById('summaryReads').textContent = formatNumber(summary.total_genotyped_reads);
+  document.getElementById('summaryPredictions').textContent = formatNumber(summary.total_predictions);
   document.getElementById('inputDemultiplexed').textContent = REPORT_DATA.inputs.demultiplexed_dir || '-';
   document.getElementById('inputGenotypes').textContent = REPORT_DATA.inputs.genotypes_file || '-';
   document.getElementById('inputPredictions').textContent = REPORT_DATA.inputs.predictions_file || '-';
   document.getElementById('inputTrueAlleles').textContent = REPORT_DATA.inputs.true_alleles_file || '-';
   document.getElementById('truthStatistics').hidden = !REPORT_DATA.inputs.true_alleles_file;
   document.getElementById('truthStatisticsNote').hidden = !REPORT_DATA.inputs.true_alleles_file;
-  const stats = REPORT_DATA.summary.truth_statistics;
+  const stats = summary.truth_statistics;
   for (const [id, key] of [['summaryExactMatches', 'exact_matches'], ['summaryMissedTrue', 'with_missed_true_alleles'], ['summaryNoTrueCalled', 'with_no_true_allele_called']]) {{
     const value = stats[key];
     document.getElementById(id).textContent = value.proportion === null
@@ -624,7 +801,7 @@ function renderSummary() {{
       : `${{(100 * value.proportion).toFixed(1)}}% (${{value.count}}/${{stats.evaluated}})`;
   }}
   document.getElementById('truthStatisticsNote').textContent = stats.evaluated
-    ? `Based on ${{stats.evaluated}} evaluated sample/locus entries; entries without truth are excluded. Entries with no true allele called also count as having uncalled true alleles, so percentages overlap.`
+    ? `Based on ${{stats.evaluated}} evaluated sample/locus entries in the current filtered view; entries without truth are excluded. Entries with no true allele called also count as having uncalled true alleles, so percentages overlap.`
     : 'No evaluated sample/locus entries. Both prediction results and matching truth data are needed.';
 }}
 
@@ -636,10 +813,9 @@ function sampleMeta(sample) {{
   return bits.join(' · ');
 }}
 
-function renderSampleList(filterText = '') {{
-  const query = filterText.trim().toLowerCase();
+function renderSampleList() {{
   SAMPLE_LIST.innerHTML = '';
-  const filtered = REPORT_DATA.samples.filter(sample => sample.name.toLowerCase().includes(query));
+  const filtered = visibleSamples;
 
   for (const sample of filtered) {{
     const button = document.createElement('button');
@@ -825,9 +1001,9 @@ function renderChart(sample) {{
 }}
 
 function selectSample(name, revealChart = false) {{
-  currentSample = REPORT_DATA.samples.find(sample => sample.name === name) || null;
+  currentSample = visibleSamples.find(sample => sample.name === name) || null;
   if (!currentSample) return;
-  renderSampleList(SEARCH.value);
+  renderSampleList();
   renderSampleInfo(currentSample);
   renderTable(currentSample);
   renderPredictions(currentSample);
@@ -836,14 +1012,8 @@ function selectSample(name, revealChart = false) {{
   if (revealChart) document.getElementById('histogramPanel').scrollIntoView({{ block: 'start', behavior: 'auto' }});
 }}
 
-SEARCH.addEventListener('input', () => renderSampleList(SEARCH.value));
 window.addEventListener('resize', () => {{ if (currentSample) renderChart(currentSample); }});
-
-renderSummary();
-renderSampleList();
-if (REPORT_DATA.samples.length > 0) {{
-  selectSample(REPORT_DATA.samples[0].name);
-}}
+initializeFilters();
 </script>
 </body>
 </html>

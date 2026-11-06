@@ -83,6 +83,9 @@ ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv --true
 
 `--true-alleles` is optional and accepts the same file used for training. The report shows calls, truth, ranks, probabilities, and per-sample/locus precision and recall. Its legend uses **green** for correct calls, **orange** for calls absent from truth, **red** for missed true alleles, and **blue** for other bins. Samples without truth data are not evaluated. Without a truth file, calls remain orange. Supply selected calls from `predict -o`, not the full candidate scores.
 
+The HTML sidebar provides a minimum-read slider (with numeric input), sample/locus multi-selects, name search, and input-availability checkboxes. All filters update the displayed entries, overview, and allele-accuracy statistics together.
+
+
 **These features are currently in development and not yet available in the online version:**
 
 ### Build allele prediction features
