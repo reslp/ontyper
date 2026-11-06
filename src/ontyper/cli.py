@@ -132,6 +132,9 @@ Examples:
     features_parser.add_argument("-o", "--outfile", required=True, help="Output feature table")
     features_parser.add_argument("--delimiter", default=None, help="Genotype table delimiter")
     features_parser.add_argument("--mapping-delimiter", default=None, help="Mapping table delimiter")
+    features_parser.add_argument("--exclude-loci", default=None, help="Comma-separated locus IDs to exclude")
+    features_parser.add_argument("--exclude-samples", default=None, help="Comma-separated sample IDs to exclude")
+    features_parser.add_argument("--min-reads", type=int, default=0, help="Minimum total reads per sample/locus (inclusive; default: 0)")
     features_parser.set_defaults(func=features.main)
 
     # ontyper genotypes train

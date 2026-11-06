@@ -91,7 +91,13 @@ ontyper report -d demultiplexed_dir/ -g genotypes.tsv -p allele-calls.tsv --true
 ontyper genotypes features --genotypes genotypes.tsv --mapping sample_locus_mapping.csv -o features.csv
 ```
 
-Feature tables are unlabeled and reusable for both training and prediction.
+Feature tables are unlabeled and reusable for both training and prediction. Optional filters exclude entire sample/locus combinations before features are calculated:
+
+```bash
+ontyper genotypes features --genotypes genotypes.tsv --mapping sample_locus_mapping.csv --exclude-loci locusA,locusB --exclude-samples sample1,sample2 --min-reads 500 -o features.csv
+```
+
+Exclusions match the mapped `locus_id` and `sample_id` exactly. `--min-reads 500` keeps combinations with **at least 500 total reads**. Total reads come from `nsequences` (or `total_reads`); if neither exists, allele counts are summed. Filters can be combined; by default all combinations are used. 
 
 ### Train an allele prediction model
 

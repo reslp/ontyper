@@ -324,11 +324,43 @@ def add_training_labels(features_df, true_alleles_df):
     return df[TRAINING_TABLE_COLUMNS].reset_index(drop=True)
 
 
-def build_feature_table(genotypes, mapping=None, delimiter=None, mapping_delimiter=None):
+def filter_allele_counts(long_df, exclude_loci=None, exclude_samples=None, min_reads=0):
+    """Filter entire sample/locus entries by IDs and total reads before feature calculation."""
+    if min_reads < 0:
+        raise ValueError("--min-reads must be non-negative")
+    loci = {name.strip() for name in (exclude_loci or "").split(",") if name.strip()}
+    samples = {name.strip() for name in (exclude_samples or "").split(",") if name.strip()}
+    filters = [
+        ("--exclude-loci", exclude_loci is not None, long_df["locus_id"].astype(str).isin(loci)),
+        ("--exclude-samples", exclude_samples is not None, long_df["sample_id"].astype(str).isin(samples)),
+        ("--min-reads", min_reads > 0, long_df["total_reads"] < min_reads),
+    ]
+    excluded = pd.Series(False, index=long_df.index)
+    for _, _, mask in filters:
+        excluded |= mask
+    filtered = long_df.loc[~excluded].reset_index(drop=True)
+    if any(active for _, active, _ in filters):
+        identities = long_df[["sample_id", "locus_id"]]
+        total = len(identities.drop_duplicates())
+        removed = len(identities.loc[excluded].drop_duplicates())
+        print("Filter exclusions (sample/locus combinations; per-filter counts may overlap):", file=sys.stderr)
+        for name, active, mask in filters:
+            if active:
+                count = len(identities.loc[mask].drop_duplicates())
+                print(f"  {name}: {count} excluded", file=sys.stderr)
+        print(f"  Total excluded: {removed} of {total}; retained: {total - removed}", file=sys.stderr)
+    if filtered.empty:
+        raise ValueError("No sample/locus entries remain after filtering")
+    return filtered
+
+
+def build_feature_table(genotypes, mapping=None, delimiter=None, mapping_delimiter=None,
+                        exclude_loci=None, exclude_samples=None, min_reads=0):
     """Build an unlabeled feature table for training or prediction from input paths."""
     counts = read_genotype_counts(genotypes, delimiter=delimiter)
     mapping_df = read_mapping(mapping, delimiter=mapping_delimiter) if mapping else None
     long_df = wide_counts_to_long(counts, mapping_df=mapping_df)
+    long_df = filter_allele_counts(long_df, exclude_loci, exclude_samples, min_reads)
     return build_allele_features(long_df)
 
 
@@ -340,6 +372,9 @@ def main(args):
             mapping=getattr(args, "mapping", None),
             delimiter=getattr(args, "delimiter", None),
             mapping_delimiter=getattr(args, "mapping_delimiter", None),
+            exclude_loci=getattr(args, "exclude_loci", None),
+            exclude_samples=getattr(args, "exclude_samples", None),
+            min_reads=getattr(args, "min_reads", 0),
         )
     except ValueError as error:
         print(error, file=sys.stderr)
@@ -362,4 +397,7 @@ if __name__ == "__main__":
     parser.add_argument("--outfile", required=True, help="Output feature table")
     parser.add_argument("--delimiter", default=None, help="Genotype table delimiter")
     parser.add_argument("--mapping-delimiter", default=None, help="Mapping table delimiter")
+    parser.add_argument("--exclude-loci", default=None, help="Comma-separated locus IDs to exclude")
+    parser.add_argument("--exclude-samples", default=None, help="Comma-separated sample IDs to exclude")
+    parser.add_argument("--min-reads", type=int, default=0, help="Minimum total reads per sample/locus (inclusive; default: 0)")
     sys.exit(main(parser.parse_args()))
