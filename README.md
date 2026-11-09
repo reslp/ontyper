@@ -4,7 +4,7 @@
   <img src="assets/ontyper-icon-ont.png" alt="ontyper logo" width="160">
 </p>
 
-Microsatellite genotyping toolkit for Oxford Nanopore sequencing data.
+Microsatellite genotyping toolkit for Oxford Nanopore sequencing data for dipload or multiallelic data.
 
 NOTE: This is currently in heavy development and everything is subject to change.
 
