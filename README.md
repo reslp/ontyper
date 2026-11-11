@@ -4,9 +4,13 @@
   <img src="assets/ontyper-icon-ont.png" alt="ontyper logo" width="160">
 </p>
 
-Microsatellite genotyping toolkit for Oxford Nanopore sequencing data for dipload or multiallelic data.
+Microsatellite genotyping toolkit for Oxford Nanopore sequencing data for diploid or multiallelic data.
 
 NOTE: This is currently in heavy development and everything is subject to change.
+
+## User manual
+
+Read the [tutorial and command reference (PDF)](docs/ontyper-manual.pdf). The [editable Typst source](docs/ontyper-manual.typ) and [compilation instructions](docs/README.md) are included.
 
 ## Installation
 
